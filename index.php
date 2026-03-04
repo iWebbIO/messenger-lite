@@ -1458,7 +1458,7 @@ let lastRead = 0;
 let mediaRec=null, audChunks=[], recMime='';
 let pendingFile = null;
 let currentAudio=null, currentBtn=null, updateInterval=null;
-let S = { tab:'chats', id:null, type:null, reply:null, ctx:null, dms:{}, groups:{}, online:[], notifs:[], keys:{pub:null,priv:null}, e2ee:{}, we:{active:false, ready:[]}, scroll:{} };
+let S = { tab:'chats', id:null, type:null, reply:null, ctx:null, dms:{}, groups:{}, online:[], notifs:[], keys:{pub:null,priv:null}, e2ee:{}, we:{active:false, ready:[]}, scroll:{}, unread:{} };
 
 const TR = {
     en: {
@@ -1738,13 +1738,16 @@ async function poll(){
             let prev = m.type==='text' ? m.message : '['+m.type+']';
             notify(m.from_user, prev, 'dm');
             if(S.type=='dm' && S.id==m.from_user && document.hasFocus()) req('send', {to_user:m.from_user, type:'read', extra:m.timestamp});
+            if(!(S.type=='dm' && S.id==m.from_user)) S.unread['dm_'+m.from_user] = true;
         }
         S.groups={}; for(let g of d.groups){ S.groups[g.id]=g; let ex=await get('group',g.id); if(!ex.length) await save('group',g.id,[]); }
         for(let m of d.group_msgs){ 
             if(m.type=='delete'){ await removeMsg('group',m.group_id,m.extra_data); continue; }
             await store('group',m.group_id,m); 
             let prev = m.type==='text' ? m.message : '['+m.type+']';
-            notify(m.group_id, prev, 'group'); 
+            notify(m.group_id, prev, 'group');
+            let gtype = S.groups[m.group_id] && S.groups[m.group_id].category === 'channel' ? 'channel' : 'group';
+            if(!(S.type==gtype && S.id==m.group_id)) S.unread[gtype+'_'+m.group_id] = true;
         }
         for(let m of d.public_msgs){
             await store('public','global',m);
@@ -2072,43 +2075,59 @@ async function renderLists(){
         let groupFilter = document.getElementById('group-search') ? document.getElementById('group-search').value.toLowerCase() : '';
         let channelFilter = document.getElementById('channel-search') ? document.getElementById('channel-search').value.toLowerCase() : '';
         let keys = (await dbOp('readonly', s => s.getAllKeys())) || [];
+        let dmEntries = [];
         for(let k of keys){
             if(k.startsWith('mw_dm_')){
                 let u=k.split('mw_dm_')[1];
                 if(filter && !u.toLowerCase().includes(filter)) continue;
                 if(chatFilter && !u.toLowerCase().includes(chatFilter)) continue;
                 let h = await get('dm', u);
-                let lock = S.e2ee[u] ? '<svg viewBox="0 0 24 24" width="14" style="vertical-align:middle;margin-left:4px;fill:var(--accent)"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-9-2c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm9 14H6V10h12v10zm-6-3c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z"/></svg>' : '';
                 let lastMsg = h.length ? h[h.length-1] : null;
-                let last = t.start_chat;
-                if(lastMsg) {
-                    if(lastMsg.type === 'image') last = '📷 Image';
-                    else if(lastMsg.type === 'audio') last = '🎤 Voice Message';
-                    else if(lastMsg.type === 'file') last = '📁 File';
-                    else last = lastMsg.message;
-                }
-                if(last.length>30)last=last.substring(0,30)+'...';
-                let ou=S.online.find(x=>x.username==u);
-                let av=ou?ou.avatar:'';
-                dh+=`<div class="list-item ${S.id==u?'active':''}" onclick="openChat('dm','${u}')" oncontextmenu="onChatListContext(event, 'dm', '${u}')">
-                    <div class="avatar" style="background-image:url('${av}')">${av?'':u[0].toUpperCase()}</div>
-                    <div style="flex:1"><div style="font-weight:bold;display:flex;align-items:center">${u} ${lock} ${ou?'<span style="color:#0f0;font-size:0.8em;margin-left:4px">●</span>':''}</div><div style="font-size:0.8em;color:#888">${last}</div></div>
-                    </div>`;
+                dmEntries.push({u, h, lastMsg, ts: lastMsg ? (lastMsg.timestamp || 0) : 0});
             }
+        }
+        dmEntries.sort((a,b) => b.ts - a.ts);
+        for(let {u, h, lastMsg} of dmEntries){
+            let lock = S.e2ee[u] ? '<svg viewBox="0 0 24 24" width="14" style="vertical-align:middle;margin-left:4px;fill:var(--accent)"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-9-2c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm9 14H6V10h12v10zm-6-3c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z"/></svg>' : '';
+            let last = t.start_chat;
+            if(lastMsg) {
+                if(lastMsg.type === 'image') last = '📷 Image';
+                else if(lastMsg.type === 'audio') last = '🎤 Voice Message';
+                else if(lastMsg.type === 'file') last = '📁 File';
+                else last = lastMsg.message;
+            }
+            if(last.length>30)last=last.substring(0,30)+'...';
+            let ou=S.online.find(x=>x.username==u);
+            let av=ou?ou.avatar:'';
+            let unreadDot = S.unread['dm_'+u] ? '<span style="width:10px;height:10px;border-radius:50%;background:#facc15;display:inline-block;flex-shrink:0;margin-left:auto"></span>' : '';
+            dh+=`<div class="list-item ${S.id==u?'active':''}" onclick="openChat('dm','${u}')" oncontextmenu="onChatListContext(event, 'dm', '${u}')">
+                <div class="avatar" style="background-image:url('${av}')">${av?'':u[0].toUpperCase()}</div>
+                <div style="flex:1;min-width:0"><div style="font-weight:bold;display:flex;align-items:center">${u} ${lock} ${ou?'<span style="color:#0f0;font-size:0.8em;margin-left:4px">●</span>':''}</div><div style="font-size:0.8em;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${last}</div></div>
+                ${unreadDot}</div>`;
         }
         document.getElementById('list-chats').innerHTML=dh;
         let gh='';
         let ch='';
-        Object.values(S.groups).forEach(g=>{
+        let groupEntries = Object.values(S.groups);
+        const getGroupLastTs = async (g) => {
+            let h = await get('group', g.id);
+            return h.length ? (h[h.length-1].timestamp || 0) : 0;
+        };
+        let groupTsMap = {};
+        await Promise.all(groupEntries.map(async g => { groupTsMap[g.id] = await getGroupLastTs(g); }));
+        groupEntries.sort((a,b) => (groupTsMap[b.id]||0) - (groupTsMap[a.id]||0));
+        groupEntries.forEach(g=>{
             let isChan = g.category === 'channel';
             if(isChan && channelFilter && !g.name.toLowerCase().includes(channelFilter)) return;
             if(!isChan && groupFilter && !g.name.toLowerCase().includes(groupFilter)) return;
             
             let lock = S.e2ee[g.id] ? '<svg viewBox="0 0 24 24" width="14" style="vertical-align:middle;margin-left:4px;fill:var(--accent)"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-9-2c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm9 14H6V10h12v10zm-6-3c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z"/></svg>' : '';
+            let gtype = isChan ? 'channel' : 'group';
+            let unreadDot = S.unread[gtype+'_'+g.id] ? '<span style="width:10px;height:10px;border-radius:50%;background:#facc15;display:inline-block;flex-shrink:0;margin-left:auto"></span>' : '';
             let html = `<div class="list-item ${S.id==g.id?'active':''}" onclick="openChat('${isChan?'channel':'group'}',${g.id})" oncontextmenu="onChatListContext(event, '${isChan?'channel':'group'}', ${g.id})">
                 <div class="avatar">${isChan?'📢':'#'}</div>
-                <div><div style="font-weight:bold;display:flex;align-items:center">${g.name} ${lock}</div><div style="font-size:0.8em;color:#888">${g.type}</div></div>
-            </div>`;
+                <div style="flex:1;min-width:0"><div style="font-weight:bold;display:flex;align-items:center">${g.name} ${lock}</div><div style="font-size:0.8em;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.type}</div></div>
+                ${unreadDot}</div>`;
             
             if(isChan) ch += html; else gh += html;
         });
@@ -2130,6 +2149,7 @@ async function openChat(t,i){
     document.getElementById('we-overlay').style.display='none';
     if(S.id!=i) lastRead=0;
     S.type=t; S.id=i;
+    delete S.unread[t+'_'+i];
     renderLists();
     await renderChat(); 
     if(S.scroll[t+'_'+i]!==undefined) {
