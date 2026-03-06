@@ -161,6 +161,11 @@ if ($action === 'sw') {
     echo "const CACHE='mw-v1';self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['index.php','?action=icon'])));self.skipWaiting()});self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));self.addEventListener('fetch',e=>{if(e.request.method!='GET')return;e.respondWith(fetch(e.request).catch(()=>caches.match(e.request).then(r=>r||new Response('',{status:404}))))});self.addEventListener('notificationclick',e=>{e.notification.close();e.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(cl=>{for(let c of cl){if(c.url&&'focus'in c)return c.focus();}if(clients.openWindow)return clients.openWindow('index.php');}));});";
     exit;
 }
+if ($action === 'ping') {
+    header('Content-Type: application/json');
+    echo json_encode(['status'=>'pong', 'time'=>time()]);
+    exit;
+}
 
 if ($action === 'get_profile') {
     header('Content-Type: application/json');
@@ -1135,8 +1140,8 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
     .splash-screen .word span:nth-child(4) { animation: letterAppear 0.3s ease-out 0.30s forwards; }
 
     /* Connection Indicator */
-    .conn-indicator { padding: 6px 0 0 0; height: 22px; display: flex; align-items: center; justify-content: center; transition: 0.3s; flex-shrink: 0; }
-    .conn-more { font-family: 'Poppins', sans-serif; font-weight: 100; font-size: 1.4rem; letter-spacing: 0.1em; color: #fff; text-shadow: 0 0 15px #bf00ff; display: none; gap: 5px; line-height: 1; }
+    .conn-indicator { padding: 6px 0 0 0; height: 22px; display: flex; align-items: center; justify-content: center; transition: 0.3s; flex-shrink: 0; cursor: pointer; }
+    .conn-more { font-family: 'Poppins', sans-serif; font-weight: 100; font-size: 1.4rem; letter-spacing: 0.1em; color: #fff; text-shadow: 0 0 15px #bf00ff; display: none; gap: 5px; line-height: 1; direction: ltr; user-select: none; }
     .conn-more span { display: inline-block; animation: letterAppear 0.5s ease-out forwards; }
     .conn-text { font-size: 0.75rem; color: #888; font-style: italic; display: block; font-family: 'Roboto', sans-serif; font-weight: 300; letter-spacing: 0.05em; }
     .conn-dots::after { content: '.'; animation: dots 1.5s infinite; display: inline-block; width: 1.5em; text-align: left; }
@@ -1169,6 +1174,20 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
     .rtl .sentiment-dot { margin-right:0; margin-left:5px; }
     .news-summary-list { margin:0; padding:0 0 0 20px; list-style-type:disc; }
     .rtl .news-summary-list { padding:0 20px 0 0; direction: rtl; }
+
+    /* Call Overlay */
+    #call-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:#000; z-index:5000; display:none; flex-direction:column; align-items:center; justify-content:center; }
+    #remote-video { width:100%; height:100%; object-fit:cover; }
+    #local-video { position:absolute; bottom:20px; right:20px; width:100px; height:133px; background:#333; border:1px solid #fff; object-fit:cover; z-index:5001; border-radius:8px; transition:0.3s; }
+    #local-video.enlarged { width:100%; height:100%; bottom:0; right:0; border:none; z-index:5000; }
+    .call-controls { position:absolute; bottom:30px; left:50%; transform:translateX(-50%); display:flex; gap:20px; z-index:5002; }
+    .btn-call-act { width:50px; height:50px; border-radius:50%; border:none; color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:1.2rem; box-shadow:0 4px 10px rgba(0,0,0,0.5); transition:0.2s; }
+    .btn-call-act:active { transform:scale(0.95); }
+    .btn-end { background:#f44; } .btn-ans { background:#4caf50; } .btn-mic { background:rgba(255,255,255,0.2); backdrop-filter:blur(5px); }
+    .call-status { position:absolute; top:40px; left:0; width:100%; text-align:center; color:#fff; text-shadow:0 2px 4px rgba(0,0,0,0.8); z-index:5002; font-size:1.2rem; }
+    .call-avatar { width:100px; height:100px; border-radius:50%; background:#444; margin-bottom:20px; background-size:cover; display:flex; align-items:center; justify-content:center; font-size:2.5rem; color:#fff; box-shadow:0 5px 15px rgba(0,0,0,0.5); }
+    #incoming-ui { display:none; flex-direction:column; align-items:center; z-index:5003; }
+    #in-call-ui { display:none; width:100%; height:100%; }
 </style>
 </head>
 <body>
@@ -1192,6 +1211,29 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
     <div class="preview-footer">
         <div style="color:#aaa;font-size:0.8rem" id="preview-info"></div>
         <button class="btn-primary" onclick="sendPreview()">Send</button>
+    </div>
+</div>
+
+<!-- CALL OVERLAY -->
+<div id="call-overlay">
+    <div id="incoming-ui">
+        <div class="call-avatar" id="call-av"></div>
+        <div style="font-size:1.5rem;font-weight:bold;margin-bottom:5px" id="call-name">User</div>
+        <div style="color:#ccc;margin-bottom:40px" data-i18n="incoming_call">Incoming Video Call...</div>
+        <div style="display:flex;gap:40px">
+            <button class="btn-call-act btn-end" onclick="rejectCall()"><svg viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.36 7.46 6 12 6s8.66 2.36 11.71 5.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg></button>
+            <button class="btn-call-act btn-ans" onclick="answerCall()"><svg viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M20 15.5c-1.25 0-2.45-.2-3.57-.57-.35-.11-.74-.03-1.02.24l-2.2 2.2c-2.83-1.44-5.15-3.75-6.59-6.59l2.2-2.21c.28-.26.36-.65.25-1C8.7 6.45 8.5 5.25 8.5 4c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1 0 9.39 7.61 17 17 17 .55 0 1-.45 1-1v-3.5c0-.55-.45-1-1-1zM19 12h2c0-4.97-4.03-9-9-9v2c3.87 0 7 3.13 7 7zm-4 0h2c0-2.76-2.24-5-5-5v2c1.66 0 3 1.34 3 3z"/></svg></button>
+        </div>
+    </div>
+    <div id="in-call-ui">
+        <video id="remote-video" autoplay playsinline></video>
+        <video id="local-video" autoplay playsinline muted onclick="this.classList.toggle('enlarged')"></video>
+        <div class="call-status" id="call-status">Connecting...</div>
+        <div class="call-controls">
+            <button class="btn-call-act btn-mic" onclick="toggleMic(this)"><svg viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg></button>
+            <button class="btn-call-act btn-end" onclick="endCall()"><svg viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.36 7.46 6 12 6s8.66 2.36 11.71 5.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg></button>
+            <button class="btn-call-act btn-mic" onclick="toggleCam(this)"><svg viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M15 8v8H5V8h10m1-2H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4V7c0-.55-.45-1-1-1z"/></svg></button>
+        </div>
     </div>
 </div>
 
@@ -1249,7 +1291,7 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
 
     <!-- LIST PANEL -->
     <div class="nav-panel" id="nav-panel">
-        <div id="conn-indicator" class="conn-indicator">
+        <div id="conn-indicator" class="conn-indicator" onclick="showNetworkStatus()">
             <div class="conn-more"><span>m</span><span>o</span><span>r</span><span>e</span></div>
             <div class="conn-text">Connecting<span class="conn-dots"></span></div>
         </div>
@@ -1364,6 +1406,9 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
             </div>
             
             <div class="header-actions">
+                <div class="btn-icon" id="btn-call" onclick="startCall()" style="display:none">
+                    <svg viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+                </div>
                 <div class="btn-icon notif-btn" onclick="toggleNotif()">
                     <svg viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/></svg>
                     <div class="notif-badge" id="notif-count">0</div>
@@ -1458,6 +1503,9 @@ let lastRead = 0;
 let mediaRec=null, audChunks=[], recMime='';
 let pendingFile = null;
 let currentAudio=null, currentBtn=null, updateInterval=null;
+let lastPollTime = null;
+const RTC_CFG = {iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
+let pc=null, localStream=null, callState='idle', callPeer=null;
 let S = { tab:'chats', id:null, type:null, reply:null, ctx:null, dms:{}, groups:{}, online:[], notifs:[], keys:{pub:null,priv:null}, e2ee:{}, we:{active:false, ready:[]}, scroll:{} };
 
 const TR = {
@@ -1470,7 +1518,7 @@ const TR = {
         clear_history: "Clear History", delete_chat: "Delete Chat", export_chat: "Export Chat",
         camera: "Camera", gallery: "Gallery", file: "Document", location: "Location",
         type_msg: "Type a message...", type_enc: "Type an encrypted message...", only_owner: "Only owner can post",
-        start_chat: "Start chatting", join_code: "Join via Code",
+        start_chat: "Start chatting", join_code: "Join via Code", incoming_call: "Incoming Video Call...",
         cancel: "CANCEL", preview: "Preview", send: "Send",
         market_usd: "USD", market_oil: "Oil", market_updated: "Updated"
     },
@@ -1483,7 +1531,7 @@ const TR = {
         clear_history: "پاک کردن تاریخچه", delete_chat: "حذف گفتگو", export_chat: "خروجی گرفتن",
         camera: "دوربین", gallery: "گالری", file: "سند", location: "موقعیت",
         type_msg: "پیامی بنویسید...", type_enc: "پیام رمزگذاری شده...", only_owner: "فقط مالک می‌تواند پست بگذارد",
-        start_chat: "شروع گفتگو", join_code: "عضویت با کد",
+        start_chat: "شروع گفتگو", join_code: "عضویت با کد", incoming_call: "تماس تصویری ورودی...",
         cancel: "لغو", preview: "پیش‌نمایش", send: "ارسال",
         market_usd: "دلار", market_oil: "نفت", market_updated: "بروزرسانی"
     }
@@ -1709,6 +1757,7 @@ async function poll(){
         let pubH = await get('public', 'global');
         if(pubH.length) lastPub = pubH[pubH.length-1].id || 0;
         let r=await req('poll', {last_pub: lastPub});
+        lastPollTime = new Date();
         let d=await r.json();
         setConn(true);
         S.online=d.online;
@@ -1728,6 +1777,7 @@ async function poll(){
             }
             if(m.type=='wencrypt_ready'){ handleWeReady(m); continue; }
             if(m.type=='wencrypt_key'){ handleWeKey(m); continue; }
+            if(m.type=='signal'){ onSignal(m); continue; }
             if(m.type=='enc'){ 
                 try{
                     if(!S.e2ee[m.from_user]) await ensureE2EE(m.from_user);
@@ -2231,6 +2281,7 @@ async function openChat(t,i){
     document.getElementById('chat-title').innerText=tit;
     document.getElementById('chat-sub').innerText=sub;
     document.getElementById('txt').placeholder = (t=='dm' && S.e2ee[S.id]) ? langT.type_enc : (canPost ? langT.type_msg : langT.only_owner);
+    document.getElementById('btn-call').style.display = (t=='dm') ? 'flex' : 'none';
     document.getElementById('input-box').style.visibility = canPost ? 'visible' : 'hidden';
     toggleMainBtn();
     if(window.innerWidth > 768) setTimeout(()=>document.getElementById('txt').focus(), 50);
@@ -2964,6 +3015,127 @@ window.onfocus=async ()=>{
         }
     }
 };
+
+// --- WEBRTC CALLING ---
+async function startCall() {
+    if(callState!='idle') return;
+    if(S.type!='dm') return alertModal('Error', 'Calls only available in DMs');
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return alertModal('Error', 'Calling not supported (HTTPS required)');
+    callPeer = S.id;
+    callState = 'outgoing';
+    showCallUI('calling');
+    await initRTC();
+    try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        sendSignal('offer', JSON.stringify(offer));
+    } catch(e) { endCall(); alertModal('Error', 'Call failed to start'); }
+}
+async function initRTC() {
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
+        document.getElementById('local-video').srcObject = localStream;
+    } catch(e) { console.error(e); alertModal('Error', 'Camera/Mic access denied'); throw e; }
+    
+    pc = new RTCPeerConnection(RTC_CFG);
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    pc.ontrack = e => { document.getElementById('remote-video').srcObject = e.streams[0]; };
+    pc.onicecandidate = e => { if(e.candidate) sendSignal('candidate', JSON.stringify(e.candidate)); };
+    pc.onconnectionstatechange = () => {
+        if(pc.connectionState === 'connected') {
+            document.getElementById('call-status').innerText = '';
+            callState = 'connected';
+        } else if(pc.connectionState === 'disconnected' || pc.connectionState === 'failed') endCall(false);
+    };
+}
+async function onSignal(m) {
+    const data = m.message ? JSON.parse(m.message) : {};
+    const type = m.extra_data;
+    if(type === 'offer') {
+        if(callState != 'idle') return sendSignal('busy', '', m.from_user);
+        callPeer = m.from_user;
+        callState = 'incoming';
+        S.pendingOffer = data;
+        showCallUI('incoming', m.from_user);
+        // Ringtone could go here
+    } else if (type === 'answer') {
+        if(callState == 'outgoing' || callState == 'connecting') {
+            await pc.setRemoteDescription(data);
+            callState = 'connected';
+        }
+    } else if (type === 'candidate') {
+        if(pc && callState != 'idle') try { await pc.addIceCandidate(data); } catch(e){}
+    } else if (type === 'bye') {
+        endCall(false);
+    } else if (type === 'busy') {
+        alertModal('Info', 'User is busy'); endCall(false);
+    }
+}
+async function answerCall() {
+    document.getElementById('incoming-ui').style.display='none';
+    document.getElementById('in-call-ui').style.display='block';
+    await initRTC();
+    await pc.setRemoteDescription(S.pendingOffer);
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    sendSignal('answer', JSON.stringify(answer));
+    callState = 'connected';
+}
+function rejectCall() { sendSignal('bye', ''); endCall(false); }
+function endCall(notify=true) {
+    if(notify && callPeer) sendSignal('bye', '');
+    if(pc) { pc.close(); pc = null; }
+    if(localStream) { localStream.getTracks().forEach(t=>t.stop()); localStream = null; }
+    document.getElementById('call-overlay').style.display='none';
+    callState = 'idle'; callPeer = null;
+}
+
+async function showNetworkStatus() {
+    let online = navigator.onLine ? 'Online' : 'Offline';
+    let color = navigator.onLine ? '#4caf50' : '#f44';
+    let conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection || {};
+    let type = conn.effectiveType || 'Unknown';
+    let rtt = conn.rtt ? conn.rtt + ' ms' : '?';
+    let down = conn.downlink ? conn.downlink + ' Mbps' : '?';
+    let last = lastPollTime ? lastPollTime.toLocaleTimeString() : 'Never';
+    
+    let html = `
+    <div style="padding:10px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:20px">
+            <div>Status<br><b style="color:${color};font-size:1.1rem">${online}</b></div>
+            <div>Type<br><b style="color:#ccc;font-size:1.1rem">${type}</b></div>
+            <div>RTT<br><b style="color:#ccc;font-size:1.1rem">${rtt}</b></div>
+            <div>Downlink<br><b style="color:#ccc;font-size:1.1rem">${down}</b></div>
+        </div>
+        <div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:8px;margin-bottom:20px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+                <span style="color:#888">Last Poll:</span>
+                <span>${last}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between">
+                <span style="color:#888">Latency:</span>
+                <span id="net-latency">-</span>
+            </div>
+        </div>
+        <button class="btn-primary" style="width:100%;padding:12px" onclick="pingServer()">Ping Server</button>
+    </div>`;
+    alertModal("Network Status", "");
+    document.getElementById('modal-body').innerHTML = html;
+    document.getElementById('modal-ok').innerText = 'Close';
+}
+async function pingServer() { let btn = document.querySelector('#modal-body button'); if(btn) { btn.disabled = true; btn.innerText = 'Pinging...'; } let start = Date.now(); try { await fetch('?action=ping'); let lat = Date.now() - start; if(document.getElementById('net-latency')) { let el=document.getElementById('net-latency'); el.innerText = lat + ' ms'; el.style.color = lat < 200 ? '#4caf50' : (lat < 500 ? '#ff9800' : '#f44'); } } catch(e) { if(document.getElementById('net-latency')) document.getElementById('net-latency').innerText = 'Error'; } if(btn) { btn.disabled = false; btn.innerText = 'Ping Server'; } }
+
+function sendSignal(type, data, to) {
+    req('send', {to_user: to||callPeer, message: data, type: 'signal', extra: type});
+}
+function showCallUI(mode, name) {
+    document.getElementById('call-overlay').style.display='flex';
+    document.getElementById('incoming-ui').style.display = mode=='incoming'?'flex':'none';
+    document.getElementById('in-call-ui').style.display = mode=='incoming'?'none':'block';
+    if(mode=='incoming') { document.getElementById('call-name').innerText=name; let u=S.online.find(x=>x.username==name); document.getElementById('call-av').style.backgroundImage=u?`url('${u.avatar}')`:''; }
+}
+function toggleMic(btn) { let t=localStream.getAudioTracks()[0]; t.enabled=!t.enabled; btn.style.background=t.enabled?'rgba(255,255,255,0.2)':'#f44'; }
+function toggleCam(btn) { let t=localStream.getVideoTracks()[0]; t.enabled=!t.enabled; btn.style.background=t.enabled?'rgba(255,255,255,0.2)':'#f44'; }
 
 // Mobile Swipe Back
 let tSX=0, tSY=0;
