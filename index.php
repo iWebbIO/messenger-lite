@@ -1458,7 +1458,6 @@ let lastRead = 0;
 let mediaRec=null, audChunks=[], recMime='';
 let pendingFile = null;
 let currentAudio=null, currentBtn=null, updateInterval=null;
-const NOTIF_SOUND = 'data:audio/wav;base64,UklGRl9vT1BXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU'; // Short beep
 let S = { tab:'chats', id:null, type:null, reply:null, ctx:null, dms:{}, groups:{}, online:[], notifs:[], keys:{pub:null,priv:null}, e2ee:{}, we:{active:false, ready:[]}, scroll:{} };
 
 const TR = {
@@ -1772,8 +1771,19 @@ function notify(id, text, type) {
     let badge = type=='dm'?'badge-chats':(type=='channel'?'badge-channels':'badge-groups');
     if(document.getElementById(badge)) document.getElementById(badge).style.display = 'block';
 
+    try {
+        let ac = new (window.AudioContext || window.webkitAudioContext)();
+        let osc = ac.createOscillator();
+        let gn = ac.createGain();
+        osc.connect(gn);
+        gn.connect(ac.destination);
+        osc.frequency.value = 600;
+        gn.gain.value = 0.1;
+        osc.start();
+        osc.stop(ac.currentTime + 0.15);
+    } catch(e) {}
+
     if(Notification.permission==='granted'){
-        new Audio(NOTIF_SOUND).play().catch(e=>{});
         let opts={body:text,icon:'?action=icon',tag:'mw-'+id};
         if(navigator.serviceWorker&&navigator.serviceWorker.controller) navigator.serviceWorker.ready.then(r=>r.showNotification(title,opts));
         else new Notification(title,opts);
