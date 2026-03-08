@@ -1130,6 +1130,22 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
         .messages { padding: 10px; }
         .desktop-only { display: none !important; }
         .mobile-only { display: block !important; }
+        
+        /* Mobile Context Menu (Bottom Sheet) */
+        .ctx-menu {
+            top: auto !important; bottom: 0 !important; left: 0 !important;
+            width: 100%; min-width: 100%;
+            border-radius: 16px 16px 0 0;
+            border: none; 
+            border-top: 1px solid var(--border);
+            box-shadow: 0 -10px 40px rgba(0,0,0,0.5);
+            animation: slideUp 0.2s cubic-bezier(0.1, 0.9, 0.2, 1);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        .ctx-menu::before { content: ''; display: block; width: 40px; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; margin: 12px auto 8px auto; }
+        .ctx-item { padding: 16px 24px; font-size: 1.05rem; }
+        .ctx-reactions { padding: 20px 10px; gap: 15px; justify-content: center; }
+        .ctx-reaction { font-size: 1.8rem; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 50%; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; }
     }
     @media (min-width: 769px) { .back-btn { display:none; } .mobile-only { display: none !important; } }
 
@@ -2616,11 +2632,17 @@ function showContextMenu(e, type, data) {
     menu.innerHTML = html;
     menu.style.display = 'block';
     
-    let x = e.clientX, y = e.clientY;
-    if (x + menu.offsetWidth > window.innerWidth) x -= menu.offsetWidth;
-    if (y + menu.offsetHeight > window.innerHeight) y -= menu.offsetHeight;
-    menu.style.left = x + 'px';
-    menu.style.top = y + 'px';
+    if (window.innerWidth > 768) {
+        let x = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+        let y = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+        if (x + menu.offsetWidth > window.innerWidth) x -= menu.offsetWidth;
+        if (y + menu.offsetHeight > window.innerHeight) y -= menu.offsetHeight;
+        menu.style.left = x + 'px';
+        menu.style.top = y + 'px';
+    } else {
+        menu.style.left = '';
+        menu.style.top = '';
+    }
     if(navigator.vibrate) navigator.vibrate(30);
 }
 
