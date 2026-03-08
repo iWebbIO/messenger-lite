@@ -1509,6 +1509,7 @@ let pc=null, localStream=null, callState='idle', callPeer=null;
 let S = { tab:'chats', id:null, type:null, reply:null, ctx:null, dms:{}, groups:{}, online:[], notifs:[], keys:{pub:null,priv:null}, e2ee:{}, we:{active:false, ready:[]}, scroll:{} };
 
 const TR = {
+
     en: {
         tab_chats: "Chats", tab_groups: "Groups", tab_channels: "Channels", tab_public: "Public", tab_observatory: "Observatory", tab_settings: "Settings", tab_about: "About",
         search_chats: "Search chats...", search_groups: "Search groups...", search_channels: "Search channels...",
@@ -1660,6 +1661,7 @@ async function loadKeys() {
 
 async function saveSession(u, k) {
     S.e2ee[u] = k;
+
     localStorage.setItem('mw_sess_' + u, JSON.stringify(await window.crypto.subtle.exportKey("jwk", k)));
 }
 
@@ -1671,6 +1673,7 @@ async function loadSessions() {
             let u = k.split('mw_sess_')[1];
             S.e2ee[u] = await window.crypto.subtle.importKey("jwk", JSON.parse(localStorage.getItem(k)), {name:"AES-GCM",length:256}, false, ["encrypt","decrypt"]);
         }
+
     }
 }
 
@@ -2159,6 +2162,12 @@ function renderDmItem(el, d, isUpdate) {
     if(!isUpdate) {
         el.onclick = () => openChat('dm', d.u);
         el.oncontextmenu = (e) => onChatListContext(e, 'dm', d.u);
+
+    }
+    if (!S.dmSort) {
+        S.dmSort = {};
+    }
+    if (!S.dmSort[d.u]) {
     }
     let html = `<div class="avatar" style="background-image:url('${d.av}')">${d.av?'':d.u[0].toUpperCase()}</div><div style="flex:1"><div style="font-weight:bold;display:flex;align-items:center">${d.u} ${d.lock} ${d.ou?'<span style="color:#0f0;font-size:0.8em;margin-left:4px">●</span>':''}</div><div style="font-size:0.8em;color:#888">${d.last}</div></div>`;
     if(el.innerHTML !== html) el.innerHTML = html;
@@ -2179,10 +2188,10 @@ function renderGroupItem(el, item, isUpdate) {
     if(el.innerHTML !== html) el.innerHTML = html;
 }
 
+
 async function renderLists(){
     try {
         const t = TR[curLang];
-        let filter = document.getElementById('chat-search').value.toLowerCase();
         let chatFilter = document.getElementById('chat-search').value.toLowerCase();
         let groupFilter = document.getElementById('group-search') ? document.getElementById('group-search').value.toLowerCase() : '';
         let channelFilter = document.getElementById('channel-search') ? document.getElementById('channel-search').value.toLowerCase() : '';
@@ -2192,7 +2201,6 @@ async function renderLists(){
         for(let k of keys){
             if(k.startsWith('mw_dm_')){
                 let u = k.split('mw_dm_')[1];
-                if(filter && !u.toLowerCase().includes(filter)) continue;
                 if(chatFilter && !u.toLowerCase().includes(chatFilter)) continue;
                 let h = await get('dm', u);
                 let lock = S.e2ee[u] ? '<svg viewBox="0 0 24 24" width="14" style="vertical-align:middle;margin-left:4px;fill:var(--accent)"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-9-2c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm9 14H6V10h12v10zm-6-3c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z"/></svg>' : '';
@@ -2211,6 +2219,7 @@ async function renderLists(){
             }
         }
         dms.sort((a,b) => b.ts - a.ts);
+
         updateListDOM('list-chats', dms, renderDmItem);
 
         let groupsList = [];
@@ -3178,6 +3187,7 @@ setInterval(updateWorldClocks, 1000);
 
 if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
 init().catch(e=>console.error(e));
+
 </script>
 </body>
 </html>
