@@ -1517,7 +1517,7 @@ let mediaRec=null, audChunks=[], recMime='';
 let pendingFile = null;
 let currentAudio=null, currentBtn=null, updateInterval=null;
 let lastPollTime = null;
-const RTC_CFG = {iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
+const RTC_CFG = LIGHTWEIGHT_MODE ? {iceServers:[]} : {iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
 let pc=null, localStream=null, callState='idle', callPeer=null;
 let S = { tab:'chats', id:null, type:null, reply:null, ctx:null, dms:{}, groups:{}, online:[], notifs:[], keys:{pub:null,priv:null}, e2ee:{}, we:{active:false, ready:[]}, scroll:{}, ackDms:[], groupCursors:{}, wsync:{peers:{}, dc:{}}, deviceId: localStorage.getItem('mw_did') || Math.random().toString(36).substr(2,9) };
 localStorage.setItem('mw_did', S.deviceId);
@@ -3184,19 +3184,18 @@ function endCall(notify=true) {
 async function showNetworkStatus() {
     let online = navigator.onLine ? 'Online' : 'Offline';
     let color = navigator.onLine ? '#4caf50' : '#f44';
-    let conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection || {};
-    let type = conn.effectiveType || 'Unknown';
-    let rtt = conn.rtt ? conn.rtt + ' ms' : '?';
-    let down = conn.downlink ? conn.downlink + ' Mbps' : '?';
+    
+    let wsyncCount = Object.keys(S.wsync.dc).length;
+    let wsyncText = wsyncCount > 0 ? wsyncCount + ' Peer(s)' : 'Idle';
+    let wsyncColor = wsyncCount > 0 ? '#4caf50' : '#888';
+
     let last = lastPollTime ? lastPollTime.toLocaleTimeString() : 'Never';
     
     let html = `
     <div style="padding:10px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:20px">
-            <div>Status<br><b style="color:${color};font-size:1.1rem">${online}</b></div>
-            <div>Type<br><b style="color:#ccc;font-size:1.1rem">${type}</b></div>
-            <div>RTT<br><b style="color:#ccc;font-size:1.1rem">${rtt}</b></div>
-            <div>Downlink<br><b style="color:#ccc;font-size:1.1rem">${down}</b></div>
+            <div>Internet<br><b style="color:${color};font-size:1.1rem">${online}</b></div>
+            <div>WSync<br><b style="color:${wsyncColor};font-size:1.1rem">${wsyncText}</b></div>
         </div>
         <div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:8px;margin-bottom:20px">
             <div style="display:flex;justify-content:space-between;margin-bottom:5px">
