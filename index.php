@@ -3722,13 +3722,27 @@ async function sendSticker(content, type='text') {
 }
 
 // Mobile Swipe Back
-let tSX=0, tSY=0;
+let tSX=0, tSY=0, isDragging=false;
 const mv = document.getElementById('main-view');
-mv.addEventListener('touchstart', e => { tSX=e.changedTouches[0].screenX; tSY=e.changedTouches[0].screenY; }, {passive:true});
+mv.addEventListener('touchstart', e => {
+    if(window.innerWidth > 768) return;
+    tSX = e.touches[0].clientX; tSY = e.touches[0].clientY;
+    isDragging = false; mv.style.transition = 'none';
+}, {passive:true});
+mv.addEventListener('touchmove', e => {
+    if(window.innerWidth > 768 || !mv.classList.contains('active')) return;
+    let dx = e.touches[0].clientX - tSX, dy = e.touches[0].clientY - tSY;
+    if(!isDragging && dx > 10 && Math.abs(dy) < Math.abs(dx) * 0.8) isDragging = true;
+    if(isDragging) { if(e.cancelable) e.preventDefault(); mv.style.transform = `translateX(${Math.max(0, dx)}px)`; }
+}, {passive:false});
 mv.addEventListener('touchend', e => {
     if(window.innerWidth > 768) return;
-    let tEX=e.changedTouches[0].screenX, tEY=e.changedTouches[0].screenY;
-    if(tEX - tSX > 80 && Math.abs(tEY - tSY) < 60 && tSX < 50) closeChat();
+    mv.style.transition = '';
+    if(isDragging) {
+        if(e.changedTouches[0].clientX - tSX > 100) { closeChat(); mv.style.transform = ''; }
+        else mv.style.transform = '';
+        isDragging = false;
+    } else mv.style.transform = '';
 }, {passive:true});
 
 function updateWorldClocks() {
