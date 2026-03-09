@@ -986,6 +986,9 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
     .file-att:hover { background:rgba(0,0,0,0.3); }
     .msg-sender { font-size:0.75rem; font-weight:bold; color:var(--accent); margin-bottom:4px; cursor:pointer; }
     .msg-meta { font-size:0.7rem; color:rgba(255,255,255,0.5); text-align:right; margin-top:2px; }
+    .msg.msg-sticker { background: transparent !important; border: none; padding: 0; box-shadow: none; }
+    .msg.msg-sticker .msg-meta { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.5); padding: 2px 8px; border-radius: 12px; color: #fff; pointer-events: none; }
+    .msg.msg-sticker .msg-sender { margin-left: 5px; margin-bottom: 2px; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
     .msg.pinned { border: 1px solid var(--accent); }
     .reaction-bar { position:absolute; bottom:-12px; right:0; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:2px 6px; font-size:0.8rem; box-shadow:0 2px 5px rgba(0,0,0,0.5); cursor:pointer; }
     
@@ -1098,6 +1101,7 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
     .sticker-grid { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; }
     .sticker-item { width: 100%; aspect-ratio: 1; object-fit: contain; cursor: pointer; transition: transform 0.1s; }
     .sticker-item:hover { transform: scale(1.05); }
+    .sticker-add-btn { display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.1); border-radius:8px; cursor:pointer; font-size:2rem; color:#888; }
     .gif-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
     .gif-item { width: 100%; height: 100px; object-fit: cover; border-radius: 6px; cursor: pointer; }
     .emoji-search { padding: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--text); width: 100%; box-sizing: border-box; border-radius: 4px; margin-bottom: 10px; }
@@ -1551,7 +1555,7 @@ let currentAudio=null, currentBtn=null, updateInterval=null;
 let lastPollTime = null;
 const RTC_CFG = LIGHTWEIGHT_MODE ? {iceServers:[]} : {iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
 let pc=null, localStream=null, callState='idle', callPeer=null;
-let S = { tab:'chats', id:null, type:null, reply:null, ctx:null, dms:{}, groups:{}, online:[], profiles:{}, notifs:[], keys:{pub:null,priv:null}, e2ee:{}, we:{active:false, ready:[]}, scroll:{}, ackDms:[], groupCursors:{}, wsync:{peers:{}, dc:{}}, deviceId: localStorage.getItem('mw_did') || Math.random().toString(36).substr(2,9) };
+let S = { tab:'chats', id:null, type:null, reply:null, ctx:null, dms:{}, groups:{}, online:[], profiles:{}, notifs:[], keys:{pub:null,priv:null}, e2ee:{}, we:{active:false, ready:[]}, scroll:{}, ackDms:[], groupCursors:{}, wsync:{peers:{}, dc:{}}, deviceId: localStorage.getItem('mw_did') || Math.random().toString(36).substr(2,9), stickers:[], gifs:[] };
 localStorage.setItem('mw_did', S.deviceId);
 
 const TR = {
@@ -1754,6 +1758,12 @@ async function init(){
         
         let cp = await get('meta', 'users');
         if(cp && !Array.isArray(cp)) S.profiles = cp;
+
+        let cst = await get('custom', 'stickers');
+        if(cst && Array.isArray(cst)) S.stickers = cst;
+
+        let cgf = await get('custom', 'gifs');
+        if(cgf && Array.isArray(cgf)) S.gifs = cgf;
 
         setLang(curLang);
         renderLists();
@@ -2483,7 +2493,7 @@ function scrollToMsg(ts){
 function createMsgNode(m, showSender, history){
     let div=document.createElement('div');
     div.id = 'msg-' + m.timestamp;
-    div.className=`msg ${m.from_user==ME?'out':'in'} ${m.pinned?'pinned':''}`;
+    div.className=`msg ${m.from_user==ME?'out':'in'} ${m.pinned?'pinned':''} ${m.type=='sticker'?'msg-sticker':''}`;
     let sender='';
     if(showSender) sender=`<div class="msg-sender" onclick="if(ME!='${m.from_user}'){openChat('dm','${m.from_user}');switchTab('chats');}">${m.from_user}</div>`;
 
@@ -2497,6 +2507,8 @@ function createMsgNode(m, showSender, history){
             <div class="audio-time">0:00</div>
             <audio src="${m.message}" style="display:none" onloadedmetadata="this.parentElement.querySelector('.audio-time').innerText=formatTime(this.duration)"></audio>
         </div>`;
+    else if(m.type=='sticker') txt=`<img src="${m.message}" style="width:128px;height:128px;object-fit:contain">`;
+    else if(m.type=='gif') txt=`<video src="${m.message}" autoplay loop muted playsinline style="max-width:100%;border-radius:8px;cursor:pointer" onclick="if(this.paused)this.play();else this.pause()"></video>`;
     else if(m.type=='file') {
         let fname = esc(m.extra_data || 'file');
         let safeName = (m.extra_data || 'file').replace(/'/g, "\\'");
@@ -3505,30 +3517,38 @@ function switchEmojiTab(tab) {
         });
     } else if(tab === 'sticker') {
         c.classList.add('sticker-grid');
-        // Demo Stickers (using Kaomoji for lightweight self-contained)
-        const stickers = ["(╯°□°)╯︵ ┻━┻", "¯\\_(ツ)_/¯", "ಠ_ಠ", "( ͡° ͜ʖ ͡°)", "ʕ•ᴥ•ʔ", "(▀̿Ĺ̯▀̿ ̿)", "♥‿♥", "ᕙ(⇀‸↼‶)ᕗ", "(づ｡◕‿‿◕｡)づ", "Wait...", "Cool", "Nice", "OMG", "LOL"];
-        stickers.forEach(s => {
-            let el = document.createElement('div');
-            el.className = 'emoji-item'; // Reuse style
-            el.style.fontSize = '1rem';
-            el.style.border = '1px solid var(--border)';
-            el.innerText = s;
-            el.onclick = () => { sendSticker(s); toggleEmojiDrawer(); };
+        
+        let addBtn = document.createElement('div');
+        addBtn.className = 'sticker-item sticker-add-btn';
+        addBtn.innerHTML = '+';
+        addBtn.onclick = () => createSticker();
+        c.appendChild(addBtn);
+
+        S.stickers.forEach(s => {
+            let el = document.createElement('img');
+            el.className = 'sticker-item';
+            el.src = s;
+            el.onclick = () => { sendSticker(s, 'sticker'); toggleEmojiDrawer(); };
             c.appendChild(el);
         });
     } else if(tab === 'gif') {
         c.classList.add('gif-grid');
-        let search = document.createElement('input');
-        search.className = 'emoji-search';
-        search.placeholder = TR[curLang].search_gifs;
-        c.appendChild(search);
-        // Demo GIFs (Static placeholders since no API key)
-        let gifs = ['https://media.tenor.com/m807M48tlgwAAAAM/cat-typing.gif', 'https://media.tenor.com/C38D1c_8qP8AAAAM/hello-hi.gif', 'https://media.tenor.com/pCgI2Fj31zAAAAAM/thumbs-up-ok.gif'];
-        gifs.forEach(url => {
-            let el = document.createElement('img');
+        
+        let addBtn = document.createElement('div');
+        addBtn.className = 'gif-item sticker-add-btn';
+        addBtn.innerHTML = '+';
+        addBtn.onclick = () => createGif();
+        c.appendChild(addBtn);
+
+        S.gifs.forEach(url => {
+            let el = document.createElement('video');
             el.className = 'gif-item';
             el.src = url;
-            el.onclick = () => { sendSticker(url, 'image'); toggleEmojiDrawer(); };
+            el.autoplay = true;
+            el.loop = true;
+            el.muted = true;
+            el.playsInline = true;
+            el.onclick = () => { sendSticker(url, 'gif'); toggleEmojiDrawer(); };
             c.appendChild(el);
         });
     }
@@ -3539,6 +3559,74 @@ function insertEmoji(char) {
     txt.value += char;
     txt.focus();
     toggleMainBtn();
+}
+
+function createSticker() {
+    let inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = 'image/*';
+    inp.onchange = async e => {
+        let f = e.target.files[0];
+        if(!f) return;
+        startProg();
+        try {
+            let img = await new Promise((res,rej)=>{let i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=URL.createObjectURL(f);});
+            let cvs = document.createElement('canvas');
+            cvs.width = 512; cvs.height = 512;
+            let ctx = cvs.getContext('2d');
+            
+            // Center Crop
+            let s = Math.min(img.width, img.height);
+            let sx = (img.width - s) / 2;
+            let sy = (img.height - s) / 2;
+            
+            ctx.drawImage(img, sx, sy, s, s, 0, 0, 512, 512);
+            let b64 = cvs.toDataURL('image/png');
+            S.stickers.push(b64);
+            await save('custom', 'stickers', S.stickers);
+            switchEmojiTab('sticker');
+        } catch(e) { alertModal('Error', 'Failed to process image'); }
+        endProg();
+    };
+    inp.click();
+}
+
+function createGif() {
+    let inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = 'video/*,image/gif';
+    inp.onchange = async e => {
+        let f = e.target.files[0];
+        if(!f) return;
+        startProg();
+        if(f.type.startsWith('video/')) {
+            let v = document.createElement('video');
+            v.preload = 'metadata';
+            v.onloadedmetadata = async () => {
+                if(v.duration > 15) { alertModal('Error', 'Video must be 15 seconds or less'); endProg(); return; }
+                let r = new FileReader();
+                r.onload = async () => {
+                    S.gifs.push(r.result);
+                    await save('custom', 'gifs', S.gifs);
+                    switchEmojiTab('gif');
+                    endProg();
+                };
+                r.readAsDataURL(f);
+            };
+            v.src = URL.createObjectURL(f);
+        } else {
+            // GIF Image
+            let r = new FileReader();
+            r.onload = async () => {
+                S.gifs.push(r.result);
+                await save('custom', 'gifs', S.gifs);
+                switchEmojiTab('gif');
+                endProg();
+            };
+            r.readAsDataURL(f);
+        }
+    };
+    inp.click();
 }
 
 async function sendSticker(content, type='text') {
