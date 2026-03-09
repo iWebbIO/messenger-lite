@@ -1291,9 +1291,6 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
             <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14zM5 10h14v2H5zm0 4h14v2H5z"/></svg>
             <div class="rail-badge" id="badge-channels"></div>
         </div>
-        <div class="rail-btn" id="nav-public" onclick="switchTab('public')">
-            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-        </div>
         <div class="rail-btn" id="nav-observatory" onclick="switchTab('observatory')" <?php if ($lightweightMode) echo 'style="display:none"'; ?>>
             <svg viewBox="0 0 24 24"><path d="M19.9,1.622a1,1,0,0,0-1.365-.52L1.562,9.388a1,1,0,0,0-.488,1.276L2.59,14.378A1,1,0,0,0,3.516,15a1.043,1.043,0,0,0,.24-.029L11,13.179v4.407L7.293,21.293a1,1,0,1,0,1.414,1.414L11,20.414V22a1,1,0,0,0,2,0V20.414l2.293,2.293a1,1,0,0,0,1.414-1.414L13,17.586v-4.9L22.24,10.4a1,1,0,0,0,.686-1.348ZM4.115,12.821l-.836-2.047L18.447,3.368l2.191,5.367Z"/></svg>
         </div>
@@ -1350,21 +1347,6 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
                     <div class="rail-letters"><span>m</span><span>o</span><span>R</span><span>e</span></div>
                     <div class="rail-dot"></div>
                 </div>
-            </div>
-        </div>
-        <div id="tab-public" class="tab-content" style="display:none">
-            <div class="panel-header" style="justify-content:space-between;border-bottom:1px solid var(--border);padding:10px 15px">
-                <div style="font-weight:bold" data-i18n="tab_public">Public Chat</div>
-                <div style="font-size:0.8rem;color:var(--accent)"><span id="online-count">0</span> <span data-i18n="online_users">Online</span></div>
-            </div>
-            <div id="public-msgs" class="messages" style="flex:1;overflow-y:auto;background:var(--bg);padding:10px"></div>
-            <div class="input-area" style="background:var(--panel);padding:10px">
-                <div class="input-wrapper">
-                    <textarea id="public-txt" rows="1" placeholder="Type a message..." style="width:100%;padding:10px 12px;border-radius:20px;border:none;background:var(--input-bg);color:var(--text);outline:none;box-sizing:border-box;resize:none;height:40px;font-family:inherit;line-height:1.4;display:block" onkeydown="if(event.key=='Enter' && !event.shiftKey){event.preventDefault();send()}"></textarea>
-                </div>
-                <button class="btn-icon" onclick="send()" style="color:var(--accent)">
-                    <svg viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-                </button>
             </div>
         </div>
         <div id="tab-observatory" class="tab-content" style="display:none" <?php if ($lightweightMode) echo 'hidden'; ?>>
@@ -1881,10 +1863,10 @@ async function poll(){
         for(let m of d.public_msgs){
             if(m.type=='delete'){ await removeMsg('public','global',m.extra_data); continue; }
             await store('public','global',m);
-            if(S.tab!='public') notify('global', m.message, 'public');
             notify('global', m.message, 'public');
         }
-        if(S.type=='dm' && d.typing && d.typing.includes(S.id)) document.getElementById('typing-ind').style.display='block'; else document.getElementById('typing-ind').style.display='none';
+        if(S.type=='public') document.getElementById('chat-sub').innerText = "Global Room (5m TTL) - " + d.online.length + " Online";
+        else if(S.type=='dm' && d.typing && d.typing.includes(S.id)) document.getElementById('typing-ind').style.display='block'; else document.getElementById('typing-ind').style.display='none';
 
         await renderLists();
         if(S.type=='dm' && S.id){
@@ -1985,7 +1967,7 @@ async function store(t,i,m){
         if(h[h.length-1].timestamp == m.timestamp) {
             let prev = h.length>1 ? h[h.length-2] : null;
             let show = (t=='public'||t=='group'||t=='channel') && m.from_user!=ME && (!prev || prev.from_user!=m.from_user);
-            let c = (t=='public') ? document.getElementById('public-msgs') : document.getElementById('msgs');
+            let c = document.getElementById('msgs');
             if(c) c.appendChild(createMsgNode(m, show, h));
             scrollToBottom(false);
         } else renderChat();
@@ -2127,21 +2109,11 @@ function switchTab(t){
     document.getElementById('nav-panel').classList.remove('full-width');
     document.getElementById('main-view').style.display = '';
     
-    if(t=='public') {
-        S.type='public'; S.id='global'; S.reply=null;
-        document.getElementById('nav-panel').classList.add('full-width');
-        document.getElementById('main-view').style.display = 'none';
-        renderChat();
-        scrollToBottom(true);
-    }
     if(t=='observatory') {
         document.getElementById('chat-view').style.display='none';
         document.getElementById('observatory-view').style.display='flex';
         loadObservatory();
         updateWorldClocks();
-    } else if(t=='public') {
-        document.getElementById('observatory-view').style.display='none';
-        document.getElementById('chat-view').style.display='none';
     } else {
         document.getElementById('observatory-view').style.display='none';
         document.getElementById('chat-view').style.display='flex';
@@ -2290,11 +2262,20 @@ function renderDmItem(el, d, isUpdate) {
     }
 
     let titleEl = el.querySelector('.chat-list-title');
-    let titleHTML = `${esc(d.u)} ${d.lock} ${d.ou?'<span style="color:#0f0;font-size:0.8em;margin-left:4px">●</span>':''}`;
+    let countHtml = d.onlineCount !== undefined ? `<span style="font-size:0.75rem;background:rgba(128,128,128,0.2);color:var(--text);padding:1px 6px;border-radius:10px;margin-left:8px;border:1px solid var(--border)">${d.onlineCount}</span>` : '';
+    let titleHTML = `${esc(d.u)}${countHtml} ${d.lock} ${d.ou?'<span style="color:#0f0;font-size:0.8em;margin-left:4px">●</span>':''}`;
     if (titleEl.innerHTML !== titleHTML) titleEl.innerHTML = titleHTML;
 
     let lastEl = el.querySelector('.chat-list-last');
-    if (lastEl.innerText !== d.last) lastEl.innerText = d.last;
+    if (lastEl.innerText !== d.last) {
+        if(isUpdate && lastEl.innerText) {
+            lastEl.style.transition = 'opacity 0.2s';
+            lastEl.style.opacity = '0';
+            setTimeout(()=>{ lastEl.innerText = d.last; lastEl.style.opacity = '1'; }, 200);
+        } else {
+            lastEl.innerText = d.last;
+        }
+    }
 }
 
 function renderGroupItem(el, item, isUpdate) {
@@ -2348,7 +2329,7 @@ async function renderLists(){
              else if(pubLast.type === 'file') pubMsg = '📁 File';
              else pubMsg = esc(pubLast.message || '');
         }
-        dms.push({key: 'global', u: t.tab_public + ' Chat', last: pubMsg, type: 'public', isPublic: true, ts: pubLast ? pubLast.timestamp : 0, lock: ''});
+        dms.push({key: 'global', u: t.tab_public + ' Chat', last: pubMsg, type: 'public', isPublic: true, ts: pubLast ? pubLast.timestamp : 0, lock: '', onlineCount: S.online.length});
 
         for(let k of keys){
             if(k.startsWith('mw_dm_')){
@@ -2399,7 +2380,6 @@ async function renderLists(){
         updateListDOM('list-groups', groupsList, renderGroupItem);
         updateListDOM('list-channels', channelsList, renderGroupItem);
 
-        document.getElementById('online-count').innerText=S.online.length;
         let sp=document.getElementById('app-splash'); if(sp){ sp.style.transition='opacity 0.2s'; sp.style.opacity=0; setTimeout(()=>sp.remove(),200); }
     } catch(e) { console.error("RenderLists error", e); }
 }
@@ -2439,7 +2419,7 @@ async function openChat(t,i){
         document.getElementById('chat-av').innerText=t=='channel'?'📢':'#';
         if(t=='channel' && g.owner_id != <?php echo $_SESSION['uid']; ?>) canPost = false;
     } else if(t=='public') {
-        tit="Public Chat"; sub="Global Room (5m TTL)";
+        tit="Public Chat"; sub="Global Room (5m TTL) - " + S.online.length + " Online";
         document.getElementById('chat-av').innerText='P';
         document.getElementById('chat-av').innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
         document.getElementById('chat-av').style.backgroundImage = 'none';
@@ -2548,7 +2528,7 @@ function createMsgNode(m, showSender, history){
 
 async function renderChat(){
     let h = await get(S.type,S.id);
-    let c = (S.type=='public') ? document.getElementById('public-msgs') : document.getElementById('msgs');
+    let c = document.getElementById('msgs');
     if(!c) return;
     c.innerHTML='';
     let last=null, lastDate=null;
@@ -2581,14 +2561,13 @@ function closeChat() {
 }
 
 async function send(){
-    let isPub = S.type === 'public';
-    let inputEl = isPub ? document.getElementById('public-txt') : document.getElementById('txt');
+    let inputEl = document.getElementById('txt');
     let txt=inputEl.value.trim();
     if(!txt)return;
     
     // Optimistic UI
     inputEl.value=''; 
-    if(!isPub) { document.getElementById('txt').style.height='40px'; toggleMainBtn(); }
+    document.getElementById('txt').style.height='40px'; toggleMainBtn();
     if(navigator.vibrate) navigator.vibrate(20);
     let replyId = S.reply;
     cancelReply();
@@ -3075,7 +3054,7 @@ function nukeGroup(gid){
 }
 
 function scrollToBottom(force){ 
-    let c = (S.type=='public') ? document.getElementById('public-msgs') : document.getElementById('msgs');
+    let c = document.getElementById('msgs');
     if(!c) return;
     if(force) { c.scrollTop=c.scrollHeight; return; }
     if(c.scrollHeight - c.scrollTop - c.clientHeight < 150) c.scrollTo({ top: c.scrollHeight, behavior: 'smooth' });
