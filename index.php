@@ -1042,6 +1042,11 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
     .ctx-reactions { display:flex; padding:8px; gap:5px; background:rgba(0,0,0,0.2); justify-content:space-around; }
     .ctx-reaction { cursor:pointer; transition:0.2s; font-size:1.2rem; padding:2px; border-radius:4px; }
     .ctx-reaction:hover { background:rgba(255,255,255,0.2); transform:scale(1.2); }
+    .active-reaction { background: rgba(168, 85, 247, 0.3); border: 1px solid var(--accent); }
+    .user-popup { position: fixed; z-index: 2000; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 20px; box-shadow: 0 5px 20px rgba(0,0,0,0.5); min-width: 200px; display:none; flex-direction:column; gap:10px; }
+    @media (max-width: 768px) {
+        .user-popup { bottom: 0; left: 0; width: 100%; border-radius: 16px 16px 0 0; border: none; border-top: 1px solid var(--border); animation: slideUp 0.2s; box-sizing: border-box; }
+    }
     .ctx-item { padding:10px 15px; cursor:pointer; display:flex; align-items:center; gap:10px; }
     .ctx-item:hover { background:rgba(255,255,255,0.05); }
     .ctx-separator { height:1px; background:var(--border); margin:2px 0; }
@@ -1296,6 +1301,7 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
 <div id="ctx-menu" class="ctx-menu" style="display:none">
     <!-- Dynamic Content -->
 </div>
+<div id="user-popup" class="user-popup"></div>
 
 <div class="app-container">
     <!-- NAVIGATION RAIL -->
@@ -1999,7 +2005,7 @@ async function store(t,i,m){
     if(m.type=='react'){
         let tg=h.find(x=>x.timestamp==m.extra_data);
         if(tg){ if(!tg.reacts)tg.reacts={}; tg.reacts[m.from_user]=m.message; await save(t,i,h); if(S.id==i && S.type==t) renderChat(); }
-        return;
+      return;
     }
     h.push(m); 
     h.sort((a,b)=>a.timestamp-b.timestamp);
@@ -2364,7 +2370,7 @@ async function renderLists(){
         let pubH = await get('public', 'global');
         let pubLast = pubH.length ? pubH[pubH.length-1] : null;
         let pubMsg = t.start_chat;
-        if(pubLast) {
+        if(pubLast && pubLast.message) {
              if(pubLast.type === 'image') pubMsg = '📷 Image';
              else if(pubLast.type === 'audio') pubMsg = '🎤 Voice Message';
              else if(pubLast.type === 'file') pubMsg = '📁 File';
@@ -2528,7 +2534,8 @@ function createMsgNode(m, showSender, history){
     if(m.reply_to_id && history){
         let p=history.find(x=>x.timestamp==m.reply_to_id);
         if(p) {
-            let rTxt = p.type=='image'?'📷 Image':(p.type=='audio'?'🎤 Audio':(p.type=='file'?'📁 File':esc(p.message).substring(0,30)+'...'));
+
+            let rTxt = p.type == 'image' ? '📷 Image' : (p.type == 'audio' ? '🎤 Audio' : (p.type == 'file' ? '📁 File' : esc(p.message).substring(0, 30) + '...'));
             rep=`<div style="font-size:0.8em;border-left:2px solid var(--accent);padding-left:4px;margin-bottom:4px;opacity:0.7;cursor:pointer" onclick="scrollToMsg(${m.reply_to_id})">Reply to <b>${esc(p.from_user)}</b>: ${rTxt}</div>`;
         }
     }
@@ -2537,7 +2544,25 @@ function createMsgNode(m, showSender, history){
     let stat='';
     if(m.from_user==ME && S.type=='dm') stat = m.read ? '<span style="color:#4fc3f7;margin-left:3px">✓✓</span>' : '<span style="margin-left:3px">✓</span>';
     if(m.pending) stat = '<span style="color:#888;margin-left:3px">🕒</span>';
-    div.innerHTML=`${sender}${rep}${txt}<div class="msg-meta">${new Date(m.timestamp*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} ${stat}</div>${reacts}`;
+
+    let reactDisplay = '';
+    if (m.reacts) {
+        reactDisplay = '<div class="reaction-bar">';
+        for (const user in m.reacts) {
+            reactDisplay += `<span class="reaction" onclick="viewReactionUser(event, '${user}')">`;
+
+            if (S.type === 'dm' || S.type === 'public') {
+                reactDisplay += `${m.reacts[user]}`;
+            } else {
+                reactDisplay += `${m.reacts[user]}<span class="reaction-user">(${user})</span>`;
+            }
+            reactDisplay += `</span>`;
+        }
+        reactDisplay += '</div>';
+    }
+
+
+    div.innerHTML=`${sender}${rep}${txt}<div class="msg-meta">${new Date(m.timestamp*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} ${stat}</div>${reactDisplay}`;
     
     div.oncontextmenu=(e)=>{
         e.preventDefault();
@@ -2662,12 +2687,13 @@ function showContextMenu(e, type, data) {
     let html = '';
     
     if(type == 'message') {
+        let myReact = (data.reacts && data.reacts[ME]) ? data.reacts[ME] : null;
         html = `<div class="ctx-reactions">
-        <span class="ctx-reaction" onclick="ctxAction('react','❤️')">❤️</span>
-        <span class="ctx-reaction" onclick="ctxAction('react','😂')">😂</span>
-        <span class="ctx-reaction" onclick="ctxAction('react','😮')">😮</span>
-        <span class="ctx-reaction" onclick="ctxAction('react','😢')">😢</span>
-        <span class="ctx-reaction" onclick="ctxAction('react','👍')">👍</span>
+        <span class="ctx-reaction ${myReact=='❤️'?'active-reaction':''}" onclick="ctxAction('react','❤️')">❤️</span>
+        <span class="ctx-reaction ${myReact=='😂'?'active-reaction':''}" onclick="ctxAction('react','😂')">😂</span>
+        <span class="ctx-reaction ${myReact=='😮'?'active-reaction':''}" onclick="ctxAction('react','😮')">😮</span>
+        <span class="ctx-reaction ${myReact=='😢'?'active-reaction':''}" onclick="ctxAction('react','😢')">😢</span>
+        <span class="ctx-reaction ${myReact=='👍'?'active-reaction':''}" onclick="ctxAction('react','👍')">👍</span>
         </div>
         <div class="ctx-item" onclick="ctxAction('reply')">Reply</div>
         <div class="ctx-item" onclick="ctxAction('forward')">Forward</div>
@@ -2713,12 +2739,16 @@ async function ctxAction(act, arg) {
     
     if(c.type == 'message') {
         let m = c.data;
-        if(act=='react') await sendReact(m.timestamp, arg);
+        if(act=='react') {
+            let myReact = (m.reacts && m.reacts[ME]) ? m.reacts[ME] : null;
+            if(myReact === arg) await sendReact(m.timestamp, null);
+            else await sendReact(m.timestamp, arg);
+        }
         else if(act=='reply') { S.reply=m.timestamp; document.getElementById('reply-ui').style.display='flex'; let snip=m.type=='text'?esc(m.message).substring(0,30):'['+m.type+']'; document.getElementById('reply-txt').innerHTML=`<div style="font-size:0.75rem;color:var(--accent);margin-bottom:2px">Replying to ${m.from_user}</div><div style="color:var(--text);opacity:0.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${snip}</div>`; document.getElementById('del-btn').style.display='none'; document.getElementById('txt').focus(); }
         else if(act=='forward') promptModal("Forward", "Username:", u=>{ if(u) req('send',{message:m.message,type:m.type,extra:m.extra_data,to_user:u}); });
         else if(act=='copy') { if(m.type=='text') { navigator.clipboard.writeText(m.message); showToast('Copied to clipboard'); } }
         else if(act=='pin') { let h=await get(S.type,S.id); let t=h.find(x=>x.timestamp==m.timestamp); if(t){t.pinned=!t.pinned; await save(S.type,S.id,h); renderChat();} }
-        else if(act=='details') alertModal("Details", `From: ${m.from_user}\nSent: ${new Date(m.timestamp*1000).toLocaleString()}`);
+      else if(act=='details') alertModal("Details", `From: ${m.from_user}\nSent: ${new Date(m.timestamp*1000).toLocaleString()}`);
         else if(act=='delete') { if(m.from_user!=ME)return; S.reply=m.timestamp; await deleteMsg(); }
     } else if(c.type == 'chat_list') {
         let d = c.data;
@@ -2732,13 +2762,63 @@ async function ctxAction(act, arg) {
     }
 }
 
+async function viewReactionUser(e, user) {
+    e.stopPropagation();
+    let p = S.profiles[user];
+    if(!p) {
+        let r = await fetch('?action=get_profile&u='+user);
+        p = await r.json();
+        if(p.status!='error') S.profiles[user] = p;
+    }
+    if(!p || !p.username) return;
+    
+    let html = `<div style="display:flex;align-items:center;gap:15px">
+        <div class="avatar" style="width:50px;height:50px;font-size:1.5rem;background-image:url('${p.avatar||''}')">${p.avatar?'':p.username[0]}</div>
+        <div>
+            <div style="font-weight:bold;font-size:1.1rem">${p.username}</div>
+            <div style="color:#888;font-size:0.9rem">${p.bio||'No bio'}</div>
+        </div>
+    </div>
+    <div style="font-size:0.8rem;color:#666;margin-top:5px">
+        Joined: ${new Date(p.joined_at*1000).toLocaleDateString()}<br>
+        Last Seen: ${new Date(p.last_seen*1000).toLocaleString()}
+    </div>`;
+    
+    let pop = document.getElementById('user-popup');
+    pop.innerHTML = html;
+    pop.style.display = 'flex';
+    
+    if(window.innerWidth > 768) {
+        let rect = e.target.getBoundingClientRect();
+        let popH = pop.offsetHeight;
+        let popW = pop.offsetWidth;
+        
+        let top = rect.top - popH - 10;
+        if(top < 10) top = rect.bottom + 10;
+        
+        let left = rect.left;
+        if(left + popW > window.innerWidth - 20) left = window.innerWidth - popW - 20;
+        
+        pop.style.top = top + 'px';
+        pop.style.left = left + 'px';
+    } else {
+        pop.style.top = ''; pop.style.left = '';
+    }
+}
+
 async function sendReact(ts,e){
     let ld={message:e,type:'react',extra:ts};
     if(S.type=='dm')ld.to_user=S.id; else if(S.type=='group'||S.type=='channel') ld.group_id=S.id; else if(S.type=='public') ld.group_id=-1;
     req('send', ld);
     let h = await get(S.type,S.id);
     let m=h.find(x=>x.timestamp==ts);
-    if(m){ if(!m.reacts)m.reacts={}; m.reacts[ME]=e; await save(S.type,S.id,h); renderChat(); }
+    if(m){ 
+        if(!m.reacts)m.reacts={}; 
+        if(e===null) delete m.reacts[ME];
+        else m.reacts[ME]=e; 
+        await save(S.type,S.id,h); 
+        renderChat(); 
+    }
 }
 
 async function deleteMsg(){
@@ -3233,6 +3313,7 @@ window.onclick=(e)=>{
     if(!e.target.closest('.notif-btn') && !e.target.closest('.menu-btn'))toggleNotif(false);
     if(!e.target.closest('.menu-btn'))document.getElementById('chat-menu').style.display='none';
     if(!e.target.closest('.ctx-menu') && !e.target.closest('.msg')) document.getElementById('ctx-menu').style.display='none';
+    if(!e.target.closest('.user-popup') && !e.target.closest('.reaction')) document.getElementById('user-popup').style.display='none';
     if(!e.target.closest('#att-menu') && !e.target.closest('#btn-att') && document.getElementById('att-menu')) document.getElementById('att-menu').style.display='none';
     if(!e.target.closest('#emoji-drawer') && !e.target.closest('#btn-emoji') && document.getElementById('emoji-drawer')) document.getElementById('emoji-drawer').style.display='none';
 };
@@ -3681,6 +3762,7 @@ setInterval(updateWorldClocks, 1000);
 
 if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
 init().catch(e=>console.error(e));
+
 setTimeout(() => sendWSyncSignal('hello'), 2000);
 
 </script>
