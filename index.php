@@ -279,6 +279,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'register') {
         $user = trim($input['username']);
         if (strlen($user) > 30) { echo json_encode(['status'=>'error','message'=>'Username too long']); exit; }
+        if (strtolower($user) === 'me') { echo json_encode(['status'=>'error','message'=>'Username reserved']); exit; }
         if (!preg_match('/^[a-zA-Z0-9_-]+$/', $user)) { echo json_encode(['status'=>'error','message'=>'Use letters, numbers, -, _ only']); exit; }
 
         $stmt = $db->prepare("SELECT 1 FROM users WHERE lower(username) = lower(?)");
@@ -1558,6 +1559,16 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
                 <button id="del-btn" style="display:none;font-size:0.8rem;color:#f55;margin-right:10px;background:none;border:none;cursor:pointer" onclick="deleteMsg()">Delete</button>
                     <span onclick="cancelReply()" style="cursor:pointer">&times;</span>
                 </div>
+                <div class="reply-ctx" id="file-preview-ui" style="display:none;border-bottom:1px solid var(--border)">
+                    <div style="display:flex;align-items:center;gap:10px;overflow:hidden;flex:1">
+                        <svg viewBox="0 0 24 24" width="20" fill="var(--accent)"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+                        <div style="overflow:hidden">
+                            <div id="file-preview-name" style="font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+                            <div id="file-preview-size" style="font-size:0.7rem;color:#888"></div>
+                        </div>
+                    </div>
+                    <span onclick="cancelFile()" style="cursor:pointer;padding:5px;font-size:1.2rem">&times;</span>
+                </div>
                 <div id="rec-ui" style="display:none;align-items:center;height:40px;background:#333;border-radius:20px;padding:0 15px;color:#f55">
                     <span style="flex:1">Recording...</span>
                     <span onclick="stopRec(false)" style="cursor:pointer;margin-right:15px;color:#ccc;letter-spacing:0.2em;text-align:center">C A N C E L</span>
@@ -2060,10 +2071,17 @@ async function store(t,i,m){
     let h = await get(t,i);
     let idx = -1;
     if(m.id) idx = h.findIndex(x => x.id == m.id);
-    if(idx === -1) idx = h.findIndex(x => x.timestamp == m.timestamp && x.message == m.message);
+    
+    if(idx === -1) {
+        idx = h.findIndex(x => {
+            if (x.timestamp !== m.timestamp || x.from_user !== m.from_user) return false;
+            if ((m.type === 'file' || m.type === 'image' || m.type === 'audio') && m.extra_data && x.extra_data === m.extra_data) return true;
+            return x.message === m.message && x.type === m.type;
+        });
+    }
     
     if(idx !== -1) {
-        if(!m.pending && h[idx].pending) {
+        if((m.id && !h[idx].id) || (!m.pending && h[idx].pending)) {
             h[idx] = m;
             await save(t,i,h);
             if(S.id==i && S.type==t) renderChat();
@@ -2369,6 +2387,9 @@ function renderDmItem(el, d, isUpdate) {
     if(d.isPublic) {
         avatarEl.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
         avatarEl.style.backgroundImage = 'none';
+    } else if(d.key === ME) {
+        avatarEl.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>';
+        avatarEl.style.backgroundImage = 'none';
     } else {
         let newAv = d.av ? `url('${d.av}')` : '';
         if (avatarEl.style.backgroundImage !== newAv) avatarEl.style.backgroundImage = newAv;
@@ -2451,7 +2472,8 @@ async function renderLists(){
         for(let k of keys){
             if(k.startsWith('mw_dm_')){
                 let u = k.split('mw_dm_')[1];
-                if(chatFilter && !u.toLowerCase().includes(chatFilter)) continue;
+                let displayName = u === ME ? "Saved Messages" : u;
+                if(chatFilter && !displayName.toLowerCase().includes(chatFilter)) continue;
                 let h = await get('dm', u);
                 let lock = S.e2ee[u] ? '<svg viewBox="0 0 24 24" width="14" style="vertical-align:middle;margin-left:4px;fill:var(--accent)"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-9-2c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm9 14H6V10h12v10zm-6-3c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z"/></svg>' : '';
                 let lastMsg = h.length ? h[h.length-1] : null;
@@ -2468,7 +2490,7 @@ async function renderLists(){
                 let ou=S.online.find(x=>x.username==u);
                 let prof = S.profiles[u];
                 let av = (ou && ou.avatar) ? ou.avatar : (prof ? prof.avatar : '');
-                dms.push({key: u, u, last, av, ou, lock, ts: lastMsg ? lastMsg.timestamp : 0});
+                dms.push({key: u, u: displayName, last, av, ou, lock, ts: lastMsg ? lastMsg.timestamp : 0});
             }
         }
         dms.sort((a,b) => {
@@ -2532,11 +2554,18 @@ async function openChat(t,i){
     const langT = TR[curLang];
     let canPost = true;
     if(t=='dm'){
-        let ou=S.online.find(x=>x.username==i);
-        let prof = S.profiles[i];
-        sub=ou?(ou.bio||'Online'):'Offline'; av=(ou && ou.avatar) ? ou.avatar : (prof ? prof.avatar : '');
-        if(av) document.getElementById('chat-av').style.backgroundImage=`url('${av}')`;
-        document.getElementById('chat-av').innerText=av?'':i[0];
+        if(i === ME) {
+            tit = "Saved Messages";
+            sub = "Cloud Storage";
+            document.getElementById('chat-av').innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>';
+            document.getElementById('chat-av').style.backgroundImage = 'none';
+        } else {
+            let ou=S.online.find(x=>x.username==i);
+            let prof = S.profiles[i];
+            sub=ou?(ou.bio||'Online'):'Offline'; av=(ou && ou.avatar) ? ou.avatar : (prof ? prof.avatar : '');
+            if(av) document.getElementById('chat-av').style.backgroundImage=`url('${av}')`;
+            document.getElementById('chat-av').innerText=av?'':i[0];
+        }
     } else if(t=='group' || t=='channel') {
         let g = S.groups[i];
         tit=g.name; sub=t=='channel'?'Channel':'Group';
@@ -2708,6 +2737,10 @@ function closeChat() {
 async function send(){
     let inputEl = document.getElementById('txt');
     let txt=inputEl.value.trim();
+    if(pendingFile && document.getElementById('file-preview-ui').style.display !== 'none') {
+        sendFile(pendingFile);
+        cancelFile();
+    }
     if(!txt)return;
     
     // Optimistic UI
@@ -3028,7 +3061,11 @@ async function processFile(f) {
         } catch(e){ console.log("Compression failed", e); alertModal('Error', 'Image processing failed'); }
         endProg();
     } else {
-        sendFile(f);
+        pendingFile = f;
+        document.getElementById('file-preview-ui').style.display = 'flex';
+        document.getElementById('file-preview-name').innerText = f.name;
+        document.getElementById('file-preview-size').innerText = (f.size/1024).toFixed(1) + ' KB';
+        toggleMainBtn();
     }
 }
 
@@ -3128,8 +3165,15 @@ function downloadFile(data, name){
 }
 
 function cancelReply(){ S.reply=null; document.getElementById('reply-ui').style.display='none'; document.getElementById('del-btn').style.display='none'; }
+function cancelFile() {
+    pendingFile = null;
+    document.getElementById('file-preview-ui').style.display = 'none';
+    document.getElementById('file').value = '';
+    toggleMainBtn();
+}
 function promptChat(){ promptModal("New Chat", "Username:", async (u)=>{ 
     if(!u) return;
+    if(u.toLowerCase() === 'me') u = ME;
     if(!/^[a-zA-Z0-9_-]+$/.test(u)){ alertModal('Error','Invalid username format'); return; }
     startProg();
     let r = await fetch('?action=get_profile&u='+u);
@@ -3381,14 +3425,15 @@ function formatTime(s) {
 
 function handleMainBtn() {
     let txt = document.getElementById('txt').value.trim();
-    if (txt) send();
+    if (txt || (pendingFile && document.getElementById('file-preview-ui').style.display !== 'none')) send();
     else startRec();
 }
 
 function toggleMainBtn() {
     let hasText = document.getElementById('txt').value.trim().length > 0;
-    document.getElementById('icon-mic').style.display = hasText ? 'none' : 'block';
-    document.getElementById('icon-send').style.display = hasText ? 'block' : 'none';
+    let hasFile = pendingFile !== null && document.getElementById('file-preview-ui').style.display !== 'none';
+    document.getElementById('icon-mic').style.display = (hasText || hasFile) ? 'none' : 'block';
+    document.getElementById('icon-send').style.display = (hasText || hasFile) ? 'block' : 'none';
 }
 
 document.getElementById('txt').oninput=function(){
