@@ -636,6 +636,9 @@ if ($action === 'logout') { session_destroy(); header("Location: index.php"); ex
 // -------------------------------------------------------------------------
 // FRONTEND
 // -------------------------------------------------------------------------
+$localPoppins = null;
+if (file_exists(__DIR__ . '/Poppins-Thin.ttf')) $localPoppins = 'Poppins-Thin.ttf';
+elseif (file_exists(__DIR__ . '/fonts/Poppins-Thin.ttf')) $localPoppins = 'fonts/Poppins-Thin.ttf';
 ?><?php if (isset($_SESSION['admin']) && !empty($adminUser)) { ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -765,6 +768,7 @@ loadData();
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@100;300;400;500&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@100;300;400;700&family=Roboto:wght@100;300;400;500&display=swap" rel="stylesheet">
 <?php endif; ?>
+<?php if ($localPoppins): ?><style>@font-face{font-family:'Poppins';src:url('<?php echo $localPoppins; ?>') format('truetype');font-weight:100;font-style:normal;}</style><?php endif; ?>
 <style>
     body { background: #0f0518; color: #eee; font-family: 'Roboto', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
     
@@ -923,6 +927,7 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
 <meta name="theme-color" content="#0f0518">
 <link rel="icon" href="?action=icon" type="image/svg+xml">
 <?php if (!$lightweightMode): ?><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@100;300;400;700&display=swap" rel="stylesheet"><?php endif; ?>
+<?php if ($localPoppins): ?><style>@font-face{font-family:'Poppins';src:url('<?php echo $localPoppins; ?>') format('truetype');font-weight:100;font-style:normal;}</style><?php endif; ?>
 <title>moreweb Messenger</title>
 <style>
     :root { --bg:#0f0518; --rail:#0b0b0b; --panel:#1a0b2e; --border:#2f1b42; --accent:#a855f7; --text:#e0e0e0; --msg-in:#261038; --msg-out:#581c87; --sb-thumb:rgba(255,255,255,0.5); --sb-hover:rgba(255,255,255,0.7); --input-bg:#333; --pattern:#222; --hover-overlay:rgba(255,255,255,0.05); }
