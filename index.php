@@ -445,7 +445,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $b64 = 'data:' . $mime . ';base64,' . base64_encode($data);
         
         $msg = $b64;
-        $type = strpos($mime, 'image') === 0 ? 'image' : 'file';
+        $type = 'file';
+        if (strpos($mime, 'image') === 0) $type = 'image';
+        else if (strpos($mime, 'video') === 0) $type = 'video';
+        else if (strpos($mime, 'audio') === 0) $type = 'audio';
         $extra = $_FILES['file']['name'];
         $ts = $_POST['timestamp'] ?? time();
         $reply = $_POST['reply_to'] ?? null;
@@ -1312,7 +1315,11 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
 <!-- MEDIA PREVIEW -->
 <div id="media-preview" class="media-preview">
     <div class="preview-header"><button class="btn-icon" onclick="closePreview()">&times;</button><span>Preview</span><div style="width:40px"></div></div>
-    <div class="preview-content"><img id="preview-img" src=""></div>
+    <div class="preview-content">
+        <img id="preview-img" src="" style="display:none">
+        <video id="preview-vid" style="display:none;max-width:100%;max-height:100%" controls></video>
+        <audio id="preview-aud" style="display:none" controls></audio>
+    </div>
     <div class="preview-footer">
         <div style="color:#aaa;font-size:0.8rem" id="preview-info"></div>
         <button class="btn-primary" onclick="sendPreview()">Send</button>
@@ -2480,6 +2487,7 @@ async function renderLists(){
                 let last = t.start_chat;
                 if(lastMsg) {
                     if(lastMsg.type === 'image') last = '📷 Image';
+                    else if(lastMsg.type === 'video') last = '📹 Video';
                     else if(lastMsg.type === 'audio') last = '🎤 Voice Message';
                     else if(lastMsg.type === 'file') last = '📁 File';
                     else if(lastMsg.type === 'sticker') last = '💟 Sticker';
@@ -2607,6 +2615,7 @@ function createMsgNode(m, showSender, history){
 
     let txt=esc(m.message);
     if(m.type=='image') txt=`<img src="${m.message.replace(/"/g, '&quot;')}" onclick="openLightbox(this.src)" onload="scrollToBottom(false)">`;
+    else if(m.type=='video') txt=`<video src="${m.message.replace(/"/g, '&quot;')}" controls style="max-width:100%;border-radius:8px"></video>`;
     else if(m.type=='audio') txt=`<div class="audio-player">
             <button class="play-btn" onclick="playAudio(this)">
                 <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
@@ -3037,6 +3046,11 @@ async function uploadFile(inp){
 }
 
 async function processFile(f) {
+    document.getElementById('preview-img').style.display = 'none';
+    document.getElementById('preview-vid').style.display = 'none';
+    document.getElementById('preview-aud').style.display = 'none';
+    document.getElementById('file-preview-ui').style.display = 'none';
+
     if(f.type.startsWith('image/') && f.type !== 'image/gif'){
         startProg();
         try {
@@ -3055,11 +3069,27 @@ async function processFile(f) {
             pendingFile = new File([blob], name, {type:'image/jpeg'});
             
             // Show Preview
-            document.getElementById('preview-img').src = URL.createObjectURL(pendingFile);
+            let pvImg = document.getElementById('preview-img');
+            pvImg.src = URL.createObjectURL(pendingFile);
+            pvImg.style.display = 'block';
             document.getElementById('preview-info').innerText = `${(pendingFile.size/1024).toFixed(1)} KB`;
             document.getElementById('media-preview').style.display = 'flex';
         } catch(e){ console.log("Compression failed", e); alertModal('Error', 'Image processing failed'); }
         endProg();
+    } else if (f.type.startsWith('video/')) {
+        pendingFile = f;
+        let pvVid = document.getElementById('preview-vid');
+        pvVid.src = URL.createObjectURL(f);
+        pvVid.style.display = 'block';
+        document.getElementById('preview-info').innerText = `${(f.size/1024/1024).toFixed(1)} MB`;
+        document.getElementById('media-preview').style.display = 'flex';
+    } else if (f.type.startsWith('audio/')) {
+        pendingFile = f;
+        let pvAud = document.getElementById('preview-aud');
+        pvAud.src = URL.createObjectURL(f);
+        pvAud.style.display = 'block';
+        document.getElementById('preview-info').innerText = `${(f.size/1024).toFixed(1)} KB`;
+        document.getElementById('media-preview').style.display = 'flex';
     } else {
         pendingFile = f;
         document.getElementById('file-preview-ui').style.display = 'flex';
@@ -3088,9 +3118,12 @@ function sendPreview() {
 
 function closePreview() {
     document.getElementById('media-preview').style.display = 'none';
-    let img = document.getElementById('preview-img');
+    let img = document.getElementById('preview-img'), vid = document.getElementById('preview-vid'), aud = document.getElementById('preview-aud');
     if(img.src) URL.revokeObjectURL(img.src);
-    document.getElementById('preview-img').src = '';
+    if(vid.src) URL.revokeObjectURL(vid.src);
+    if(aud.src) URL.revokeObjectURL(aud.src);
+    img.src = ''; vid.src = ''; aud.src = '';
+    vid.pause(); aud.pause();
     pendingFile = null;
 }
 
@@ -3103,7 +3136,10 @@ async function sendFile(fileToSend) {
     // Optimistic Render
     let r = new FileReader();
     r.onload = async () => {
-        let type = fileToSend.type.startsWith('image/') ? 'image' : 'file';
+        let type = 'file';
+        if (fileToSend.type.startsWith('image/')) type = 'image';
+        else if (fileToSend.type.startsWith('video/')) type = 'video';
+        else if (fileToSend.type.startsWith('audio/')) type = 'audio';
         await store(S.type,S.id,{from_user:ME,message:r.result,type:type,timestamp:ts,extra_data:fileToSend.name, reply_to_id:replyId, pending:true});
         scrollToBottom(true);
     };
