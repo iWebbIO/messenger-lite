@@ -945,7 +945,7 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
 
     .e2ee-on { color: var(--accent); }
     * { -webkit-tap-highlight-color: transparent; }
-    body { margin:0; font-family:'Calibri', 'Poppins', sans-serif; background:var(--bg); color:var(--text); height:100vh; height:calc(var(--vh, 1vh) * 100); display:flex; overflow:hidden; overscroll-behavior-y: none; }
+    body { margin:0; font-family:'Calibri', sans-serif; background:var(--bg); color:var(--text); height:100vh; height:calc(var(--vh, 1vh) * 100); display:flex; overflow:hidden; overscroll-behavior-y: none; }
     .rtl { font-family: 'Calibri', 'Tahoma', sans-serif; }
     .rtl .nav-panel, .rtl .main-view, .rtl .modal-box, .rtl .box { direction: rtl; text-align: right; }
     .rtl .list-item.active { border-left: none; border-right: 4px solid var(--accent); padding-left: 15px; padding-right: 11px; }
