@@ -1099,10 +1099,16 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
     .tab-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; min-height: 200px; }
     
     /* Lightbox */
-    .lightbox { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; display:none; align-items:center; justify-content:center; flex-direction:column; backdrop-filter:blur(5px); }
-    .lightbox img { max-width:100%; max-height:85%; object-fit:contain; box-shadow:0 0 20px rgba(0,0,0,0.5); }
+    .lightbox { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:2000; display:none; align-items:center; justify-content:center; flex-direction:column; backdrop-filter:blur(5px); overflow:hidden; }
+    .lightbox img { max-width:100%; max-height:90%; object-fit:contain; box-shadow:0 0 20px rgba(0,0,0,0.5); transition: transform 0.1s ease-out; cursor: grab; }
+    .lightbox img:active { cursor: grabbing; }
     .lightbox-controls { position:absolute; top:15px; right:15px; display:flex; gap:15px; z-index:2001; }
-    .lb-btn { width:40px; height:40px; background:rgba(255,255,255,0.1); border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; cursor:pointer; backdrop-filter:blur(10px); }
+    .lb-btn { width:40px; height:40px; background:rgba(255,255,255,0.2); border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; cursor:pointer; backdrop-filter:blur(10px); transition:0.2s; }
+    .lb-btn:hover { background:rgba(255,255,255,0.3); }
+    @media (max-width: 768px) {
+        .lightbox { background:#000; backdrop-filter:none; }
+        .lightbox img { max-width:100%; max-height:100%; }
+    }
     
     /* Media Preview */
     .media-preview { position:fixed; top:0; left:0; width:100%; height:100%; background:#000; z-index:3000; display:none; flex-direction:column; }
@@ -1310,6 +1316,16 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
         <div style="color:#aaa;font-size:0.8rem" id="preview-info"></div>
         <button class="btn-primary" onclick="sendPreview()">Send</button>
     </div>
+</div>
+
+<!-- LIGHTBOX -->
+<div id="lightbox" class="lightbox" onclick="closeLightbox()">
+    <div class="lightbox-controls" onclick="event.stopPropagation()">
+        <div class="lb-btn" onclick="shareImage()" title="Share"><svg viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/></svg></div>
+        <div class="lb-btn" onclick="downloadImage()" title="Download"><svg viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></div>
+        <div class="lb-btn" onclick="closeLightbox()" title="Close">&times;</div>
+    </div>
+    <img id="lb-img" src="" onclick="event.stopPropagation()">
 </div>
 
 <!-- CALL OVERLAY -->
@@ -2561,7 +2577,7 @@ function createMsgNode(m, showSender, history){
     if(showSender) sender=`<div class="msg-sender" onclick="if(ME!='${m.from_user}'){openChat('dm','${m.from_user}');switchTab('chats');}">${m.from_user}</div>`;
 
     let txt=esc(m.message);
-    if(m.type=='image') txt=`<img src="${m.message.replace(/"/g, '&quot;')}" onclick="window.open(this.src)" onload="scrollToBottom(false)">`;
+    if(m.type=='image') txt=`<img src="${m.message.replace(/"/g, '&quot;')}" onclick="openLightbox(this.src)" onload="scrollToBottom(false)">`;
     else if(m.type=='audio') txt=`<div class="audio-player">
             <button class="play-btn" onclick="playAudio(this)">
                 <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
@@ -2984,7 +3000,10 @@ function sendLocation() {
 async function uploadFile(inp){
     let f=inp.files[0]; if(!f)return;
     inp.value = ''; // Reset
-    
+    processFile(f);
+}
+
+async function processFile(f) {
     if(f.type.startsWith('image/') && f.type !== 'image/gif'){
         startProg();
         try {
@@ -2995,7 +3014,12 @@ async function uploadFile(inp){
             cvs.width=w; cvs.height=h;
             cvs.getContext('2d').drawImage(img,0,0,w,h);
             let blob = await new Promise(r=>cvs.toBlob(r,'image/jpeg',0.8));
-            pendingFile = new File([blob], f.name, {type:'image/jpeg'});
+            
+            let name = f.name;
+            if(!name || name === 'image.png') name = "image_" + Math.floor(Date.now()/1000) + ".jpg";
+            else if(name.toLowerCase().endsWith('.png')) name = name.replace(/\.png$/i, '.jpg');
+            
+            pendingFile = new File([blob], name, {type:'image/jpeg'});
             
             // Show Preview
             document.getElementById('preview-img').src = URL.createObjectURL(pendingFile);
@@ -3007,6 +3031,18 @@ async function uploadFile(inp){
         sendFile(f);
     }
 }
+
+document.addEventListener('paste', e => {
+    if(!S.id || document.getElementById('app-modal').style.display === 'flex' || document.getElementById('lightbox').style.display === 'flex') return;
+    let items = (e.clipboardData || e.originalEvent.clipboardData).items;
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].kind === 'file') {
+            e.preventDefault();
+            let blob = items[i].getAsFile();
+            if(blob) processFile(blob);
+        }
+    }
+});
 
 function sendPreview() {
     if(pendingFile) sendFile(pendingFile);
@@ -3381,6 +3417,7 @@ window.oncontextmenu = (e) => {
 window.onkeydown = (e) => {
     if(e.key === 'Escape') {
         if(document.getElementById('app-modal').style.display === 'flex') document.getElementById('modal-cancel').click();
+        else if(document.getElementById('lightbox').style.display === 'flex') closeLightbox();
         else if(document.getElementById('media-preview').style.display === 'flex') closePreview();
         else if(document.getElementById('main-view').classList.contains('active')) closeChat();
     }
