@@ -438,7 +438,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // AJAX UPLOAD
     if ($action === 'upload_msg') {
         if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
-            echo json_encode(['status'=>'error', 'message'=>'Upload failed']); exit;
+            $msg = 'Upload failed';
+            if (isset($_FILES['file']) && $_FILES['file']['error'] === UPLOAD_ERR_INI_SIZE) {
+                $msg = 'File exceeds server size limit';
+            }
+            echo json_encode(['status'=>'error', 'message'=>$msg]); exit;
         }
         
         $finfo = new finfo(FILEINFO_MIME_TYPE);
@@ -2733,7 +2737,7 @@ function createMsgNode(m, showSender, history){
     if(m.reacts) reacts=`<div class="reaction-bar">${Object.values(m.reacts).join('')}</div>`;
     let stat='';
     if(m.from_user==ME && S.type=='dm') stat = m.read ? '<span style="color:#4fc3f7;margin-left:3px">✓✓</span>' : '<span style="margin-left:3px">✓</span>';
-    if(m.pending) stat = '<span style="color:#888;margin-left:3px">🕒</span>';
+    if(m.pending) stat = '<span class="msg-pending-stat" style="color:#888;margin-left:3px">' + (m.progress !== undefined ? m.progress+'%' : '🕒') + '</span>';
 
     let reactDisplay = '';
     if (m.reacts) {
@@ -3158,6 +3162,10 @@ async function uploadFile(inp){
 }
 
 async function processFile(f) {
+    if(f.size > 20 * 1024 * 1024) {
+        alertModal('Error', 'File exceeds the 20MB limit.');
+        return;
+    }
     document.getElementById('preview-img').style.display = 'none';
     document.getElementById('preview-vid').style.display = 'none';
     document.getElementById('preview-aud').style.display = 'none';
@@ -3250,6 +3258,10 @@ function closePreview() {
 }
 
 async function sendFile(fileToSend) {
+    if(fileToSend.size > 20 * 1024 * 1024) {
+        alertModal('Error', 'File exceeds the 20MB limit.');
+        return;
+    }
     startProg();
     let ts = Math.floor(Date.now()/1000);
     let replyId = S.reply;
@@ -3262,7 +3274,7 @@ async function sendFile(fileToSend) {
         if (fileToSend.type.startsWith('image/')) type = 'image';
         else if (fileToSend.type.startsWith('video/')) type = 'video';
         else if (fileToSend.type.startsWith('audio/')) type = 'audio';
-        await store(S.type,S.id,{from_user:ME,message:r.result,type:type,timestamp:ts,extra_data:fileToSend.name, reply_to_id:replyId, pending:true});
+        await store(S.type,S.id,{from_user:ME,message:r.result,type:type,timestamp:ts,extra_data:fileToSend.name, reply_to_id:replyId, pending:true, progress: 0});
         scrollToBottom(true);
     };
     r.readAsDataURL(fileToSend);
@@ -3276,8 +3288,30 @@ async function sendFile(fileToSend) {
     else fd.append('group_id', -1);
 
     try {
-        let res = await fetch('?action=upload_msg', { method:'POST', body:fd, headers:{'X-CSRF-Token': CSRF_TOKEN} });
-        let d = await res.json();
+        let d = await new Promise((resolve, reject) => {
+            let xhr = new XMLHttpRequest();
+            xhr.open('POST', '?action=upload_msg');
+            xhr.setRequestHeader('X-CSRF-Token', CSRF_TOKEN);
+            
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    let pct = Math.round((e.loaded / e.total) * 100);
+                    let msgNode = document.getElementById('msg-' + ts);
+                    if(msgNode) {
+                        let statNode = msgNode.querySelector('.msg-pending-stat');
+                        if(statNode) statNode.innerText = pct + '%';
+                    }
+                }
+            };
+            
+            xhr.onload = () => {
+                if(xhr.status === 200) {
+                    try { resolve(JSON.parse(xhr.responseText)); } catch(err) { reject(err); }
+                } else reject(new Error('HTTP ' + xhr.status));
+            };
+            xhr.onerror = () => reject(new Error('Network Error'));
+            xhr.send(fd);
+        });
         endProg();
         if(d.status!='success') {
             alertModal('Error', d.message||'Upload failed');
@@ -3287,7 +3321,7 @@ async function sendFile(fileToSend) {
         } else {
             let h = await get(S.type, S.id);
             let m = h.find(x => x.timestamp == ts && x.extra_data == fileToSend.name);
-            if(m) { delete m.pending; await save(S.type, S.id, h); renderChat(); }
+            if(m) { delete m.pending; delete m.progress; await save(S.type, S.id, h); renderChat(); }
         }
     } catch(e) {
         endProg();
@@ -3301,6 +3335,7 @@ async function sendFile(fileToSend) {
 
 async function handleAvUpload(inp) {
     let f = inp.files[0]; if(!f) return;
+    if(f.size > 20 * 1024 * 1024) { alertModal('Error', 'File exceeds the 20MB limit.'); return; }
     startProg();
     try {
         let img = await new Promise((res,rej)=>{let i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=URL.createObjectURL(f);});
@@ -4052,6 +4087,7 @@ function createSticker() {
     inp.onchange = async e => {
         let f = e.target.files[0];
         if(!f) return;
+        if(f.size > 20 * 1024 * 1024) { alertModal('Error', 'File exceeds the 20MB limit.'); return; }
         startProg();
         try {
             let img = await new Promise((res,rej)=>{let i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=URL.createObjectURL(f);});
@@ -4082,6 +4118,7 @@ function createGif() {
     inp.onchange = async e => {
         let f = e.target.files[0];
         if(!f) return;
+        if(f.size > 20 * 1024 * 1024) { alertModal('Error', 'File exceeds the 20MB limit.'); return; }
         startProg();
         if(f.type.startsWith('video/')) {
             let v = document.createElement('video');
