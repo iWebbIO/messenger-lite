@@ -3289,6 +3289,19 @@ async function sendFile(fileToSend) {
         scrollToBottom(true);
     };
     r.readAsDataURL(fileToSend);
+    await new Promise((resolve) => {
+        let r = new FileReader();
+        r.onload = async () => {
+            let type = 'file';
+            if (fileToSend.type.startsWith('image/')) type = 'image';
+            else if (fileToSend.type.startsWith('video/')) type = 'video';
+            else if (fileToSend.type.startsWith('audio/')) type = 'audio';
+            await store(S.type,S.id,{from_user:ME,message:r.result,type:type,timestamp:ts,extra_data:fileToSend.name, reply_to_id:replyId, pending:true, progress: 0});
+            scrollToBottom(true);
+            resolve();
+        };
+        r.readAsDataURL(fileToSend);
+    });
 
     let fd = new FormData();
     fd.append('file', fileToSend);
