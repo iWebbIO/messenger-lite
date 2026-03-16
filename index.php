@@ -1675,6 +1675,7 @@ let mediaRec=null, audChunks=[], recMime='';
 let pendingFile = null;
 let currentAudio=null, currentBtn=null, updateInterval=null;
 let lastPollTime = null;
+window.isLongPress = false;
 let emojiPinned = false;
 const RTC_CFG = LIGHTWEIGHT_MODE ? {iceServers:[]} : {iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
 let pc=null, localStream=null, callState='idle', callPeer=null;
@@ -2090,6 +2091,10 @@ function notify(id, text, type) {
     updateNotifUI();
     let badge = type=='dm'?'badge-chats':(type=='channel'?'badge-channels':'badge-groups');
     if(document.getElementById(badge)) document.getElementById(badge).style.display = 'block';
+    let targetTab = type=='dm'?'chats':(type=='channel'?'channels':'groups');
+    if(S.tab !== targetTab && document.getElementById('badge-' + targetTab)) {
+        document.getElementById('badge-' + targetTab).style.display = 'block';
+    }
 
     try {
         let ac = new (window.AudioContext || window.webkitAudioContext)();
@@ -2167,6 +2172,13 @@ async function store(t,i,m){
     if(m.type=='react'){
         let tg=h.find(x=>x.timestamp==m.extra_data);
         if(tg){ if(!tg.reacts)tg.reacts={}; tg.reacts[m.from_user]=m.message; await save(t,i,h); if(S.id==i && S.type==t) renderChat(); }
+        if(tg){ 
+            if(!tg.reacts)tg.reacts={}; 
+            if(!m.message) delete tg.reacts[m.from_user];
+            else tg.reacts[m.from_user]=m.message; 
+            await save(t,i,h); 
+            if(S.id==i && S.type==t) renderChat(); 
+        }
       return;
     }
     h.push(m); 
@@ -2445,6 +2457,7 @@ function renderDmItem(el, d, isUpdate) {
     if(!isUpdate) {
         el.onclick = () => openChat(d.type||'dm', d.key);
         el.oncontextmenu = (e) => onChatListContext(e, 'dm', d.u);
+        el.oncontextmenu = (e) => onChatListContext(e, 'dm', d.key);
         el.innerHTML = `<div class="avatar"></div>
                         <div style="flex:1">
                             <div style="font-weight:bold;display:flex;align-items:center" class="chat-list-title"></div>
@@ -2683,6 +2696,7 @@ function createMsgNode(m, showSender, history){
 
     let txt;
     if(m.type=='image') txt=`<img src="${m.message}" loading="lazy" onclick="openLightbox(this.src)" onload="scrollToBottom(false)">`;
+    if(m.type=='image') txt=`<img src="${m.message}" loading="lazy" onclick="if(!window.isLongPress)openLightbox(this.src)" onload="scrollToBottom(false)">`;
     else if(m.type=='video') txt=`<div class="vid-poster" id="vid-poster-${m.timestamp}" style="position:relative;max-width:100%;min-width:200px;height:150px;background:#000;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer"><div class="play-btn" style="width:48px;height:48px;font-size:24px;padding-left:4px">▶</div></div>`;
     else if(m.type=='audio') {
         let isVoice = !m.extra_data;
@@ -2761,6 +2775,8 @@ function createMsgNode(m, showSender, history){
     let touchTimer;
     div.addEventListener('touchstart', (e) => {
         touchTimer = setTimeout(() => {
+            window.isLongPress = true;
+            setTimeout(()=>window.isLongPress=false, 500);
             // Long press detected
             showContextMenu(e, 'message', m);
         }, 500); // Adjust timing as needed
@@ -2790,6 +2806,7 @@ function createMsgNode(m, showSender, history){
         let ph = div.querySelector(`#vid-poster-${m.timestamp}`);
         if(ph) {
             ph.onclick = async (e) => {
+                if(window.isLongPress) return;
                 e.stopPropagation();
                 ph.innerHTML = '<div class="rail-dot" style="background:#fff"></div>';
                 let v = document.createElement('video');
@@ -2835,6 +2852,7 @@ async function renderChat(){
             sep.innerHTML = `<span style="background:var(--panel);padding:4px 10px;border-radius:10px;border:1px solid var(--border)">${dateStr}</span>`;
             c.appendChild(sep);
             lastDate = dateStr;
+            last = null;
         }
         let show=(S.type=='public'||S.type=='group'||S.type=='channel') && m.from_user!=ME && m.from_user!=last;
         c.appendChild(createMsgNode(m, show, h));
@@ -3035,6 +3053,7 @@ async function viewReactionUser(e, user) {
 
 async function sendReact(ts,e){
     let ld={message:e,type:'react',extra:ts};
+    let ld={message:(e||''),type:'react',extra:ts};
     if(S.type=='dm')ld.to_user=S.id; else if(S.type=='group'||S.type=='channel') ld.group_id=S.id; else if(S.type=='public') ld.group_id=-1;
     req('send', ld);
     let h = await get(S.type,S.id);
