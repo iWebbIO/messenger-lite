@@ -32,6 +32,17 @@ try {
     $db->exec("PRAGMA synchronous = NORMAL;");
     $db->exec("PRAGMA temp_store = MEMORY;");
 
+    // Enable auto-vacuum to automatically free disk space on deletions
+    $av = (int)$db->query("PRAGMA auto_vacuum")->fetchColumn();
+    if ($av !== 1) {
+        $db->exec("PRAGMA auto_vacuum = FULL;");
+        try {
+            $db->exec("VACUUM;");
+        } catch (PDOException $e) {
+            $db->exec("PRAGMA auto_vacuum = 0;"); // Revert so it attempts again later
+        }
+    }
+
     // Schema Migration System
     $ver = (int)$db->query("PRAGMA user_version")->fetchColumn();
     
@@ -351,6 +362,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $db->prepare("DELETE FROM users WHERE id = ?")->execute([$uid]);
                 $db->prepare("DELETE FROM group_members WHERE user_id = ?")->execute([$uid]);
                 $db->prepare("DELETE FROM messages WHERE from_user = ? OR to_user = ?")->execute([$u, $u]);
+                // Cleanup orphaned members from groups owned by this user
+                $db->prepare("DELETE FROM group_members WHERE group_id IN (SELECT id FROM groups WHERE owner_id = ?)")->execute([$uid]);
                 // Cleanup orphaned messages from groups owned by this user before deleting groups
                 $db->prepare("DELETE FROM messages WHERE group_id IN (SELECT id FROM groups WHERE owner_id = ?)")->execute([$uid]);
                 // Delete groups owned by user
@@ -804,17 +817,14 @@ loadData();
     /* Splash Screen */
     .splash-screen {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background-color: #202124; z-index: 9999;
         background-color: #000000; z-index: 9999;
         display: flex; justify-content: center; align-items: center;
         animation: screenFadeOut 0.5s ease-in-out 0.2s forwards;
         pointer-events: none;
     }
     .splash-screen .word {
-        color: #FFFFFF; font-family: 'Roboto', sans-serif; font-weight: 100; font-size: clamp(4rem, 10vw, 6rem);
         color: #FFFFFF; font-family: 'Poppins', sans-serif; font-weight: 100; font-size: clamp(8rem, 15vw, 10rem);
         display: grid; grid-template-columns: auto auto; justify-items: center;
-        line-height: 0.8; gap: 0.15em; direction: ltr;
         line-height: 0.8; gap: 0.15em; text-shadow: 0 0 30px #bf00ff; direction: ltr;
         animation: fadeWordOut 0.3s cubic-bezier(0.55, 0.085, 0.68, 0.53) 0.5s forwards;
     }
@@ -1515,7 +1525,7 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
                 
                 <div class="mobile-only" style="margin-top:30px;border-top:1px solid var(--border);padding-top:20px">
                     <h3 data-i18n="tab_about">About</h3>
-                    <p style="color:#888;">moreweb Messenger v0.0.2</p>
+                    <p style="color:#888;">moreweb Messenger v0.0.3</p>
                     <button class="btn-sec" style="margin-bottom:20px;cursor:pointer;padding:8px 16px;border-radius:20px" onclick="checkUpdates()" data-i18n="check_updates">Check for Updates</button><br>
                     <a href="https://github.com/iWebbIO/php-messenger" target="_blank" class="about-link">GitHub Repository</a>
                     <br><br>
@@ -1528,7 +1538,7 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
             <div class="panel-header" data-i18n="tab_about">About</div>
             <div class="list-area" style="padding:20px; text-align:center; color:#ccc;">
                 <h2>moreweb Messenger</h2>
-                <p style="color:#888;">Version 0.0.2</p>
+                <p style="color:#888;">Version 0.0.3</p>
                 <p data-i18n="about_desc">A secure, self-contained messenger with ephemeral server storage and local history persistence.</p>
                 <br>
                 <button class="btn-sec" style="margin-bottom:20px;cursor:pointer;padding:8px 16px;border-radius:20px" onclick="checkUpdates()" data-i18n="check_updates">Check for Updates</button><br>
@@ -2700,15 +2710,17 @@ function createMsgNode(m, showSender, history){
     let sender='';
     if(showSender) sender=`<div class="msg-sender" onclick="if(ME!='${m.from_user}'){openChat('dm','${m.from_user}');switchTab('chats');}">${m.from_user}</div>`;
 
+    let safeHtmlMsg = esc(m.message);
     let txt;
-    if(m.type=='image') txt=`<img src="${m.message}" loading="lazy" onclick="if(!window.isLongPress)openLightbox(this.src)" onload="scrollToBottom(false)">`;
+    if(m.type=='image') txt=`<img src="${safeHtmlMsg}" loading="lazy" onclick="if(!window.isLongPress)openLightbox(this.src)" onload="scrollToBottom(false)">`;
     else if(m.type=='video') txt=`<div class="vid-poster" id="vid-poster-${m.timestamp}" style="position:relative;max-width:100%;min-width:200px;height:150px;background:#000;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer"><div class="play-btn" style="width:48px;height:48px;font-size:24px;padding-left:4px">▶</div></div>`;
     else if(m.type=='audio') {
         let isVoice = !m.extra_data;
         let extra = '';
         if(!isVoice) {
-             let safeName = (m.extra_data || 'audio').replace(/'/g, "\\'");
-             extra = `<div style="display:flex;gap:2px;margin-left:5px"><button class="btn-icon" style="width:28px;height:28px;padding:0;color:inherit;background:none" onclick="downloadFile('${m.message}', '${safeName}')" title="Download"><svg viewBox="0 0 24 24" width="18" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></button><button class="btn-icon" style="width:28px;height:28px;padding:0;color:inherit;background:none" onclick="shareFile('${m.message}', '${safeName}')" title="Share"><svg viewBox="0 0 24 24" width="18" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/></svg></button></div>`;
+             let safeNameJs = jsEsc(m.extra_data || 'audio');
+             let safeMsgJs = jsEsc(m.message);
+             extra = `<div style="display:flex;gap:2px;margin-left:5px"><button class="btn-icon" style="width:28px;height:28px;padding:0;color:inherit;background:none" onclick="downloadFile('${safeMsgJs}', '${safeNameJs}')" title="Download"><svg viewBox="0 0 24 24" width="18" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></button><button class="btn-icon" style="width:28px;height:28px;padding:0;color:inherit;background:none" onclick="shareFile('${safeMsgJs}', '${safeNameJs}')" title="Share"><svg viewBox="0 0 24 24" width="18" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/></svg></button></div>`;
         }
         txt=`<div class="audio-player" ${!isVoice?'style="padding:8px;background:rgba(0,0,0,0.2);border-radius:8px"':''}>
             <button class="play-btn" onclick="playAudio(this)">
@@ -2717,15 +2729,16 @@ function createMsgNode(m, showSender, history){
             <div class="audio-progress" onclick="seekAudio(this, event)"><div class="audio-bar"></div></div>
             <div class="audio-time">0:00</div>
             ${extra}
-            <audio src="${m.message}" style="display:none" onloadedmetadata="this.parentElement.querySelector('.audio-time').innerText=formatTime(this.duration)"></audio>
+            <audio src="${safeHtmlMsg}" style="display:none" onloadedmetadata="this.parentElement.querySelector('.audio-time').innerText=formatTime(this.duration)"></audio>
         </div>${!isVoice ? `<div style="font-size:0.75rem;opacity:0.8;margin-top:4px;margin-left:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px">🎵 ${esc(m.extra_data)}</div>` : ''}`;
     }
-    else if(m.type=='sticker') txt=`<img src="${m.message}" loading="lazy" style="width:128px;height:128px;object-fit:contain">`;
+    else if(m.type=='sticker') txt=`<img src="${safeHtmlMsg}" loading="lazy" style="width:128px;height:128px;object-fit:contain">`;
     else if(m.type=='gif') txt=`<video class="gif-video" autoplay loop muted playsinline style="max-width:100%;border-radius:8px;cursor:pointer"></video>`;
     else if(m.type=='file') {
         let fname = esc(m.extra_data || 'file');
-        let safeName = (m.extra_data || 'file').replace(/'/g, "\\'");
-        txt = `<div class="file-att" onclick="downloadFile('${m.message}', '${safeName}')">
+        let safeNameJs = jsEsc(m.extra_data || 'file');
+        let safeMsgJs = jsEsc(m.message);
+        txt = `<div class="file-att" onclick="downloadFile('${safeMsgJs}', '${safeNameJs}')">
             <svg viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
             <span>${fname}</span></div>`;
     }
@@ -3327,49 +3340,57 @@ async function sendFile(fileToSend) {
                     let msgNode = document.getElementById('msg-' + ts);
                     if(msgNode) {
                         let statNode = msgNode.querySelector('.msg-pending-stat');
-                        if(statNode) statNode.innerText = pct + '%';
+                        if(statNode) statNode.innerText = pct === 100 ? 'Processing...' : pct + '%';
+                        msgNode.dataset.progress = pct;
                     }
                 }
             };
             
             xhr.onload = () => {
                 if(xhr.status === 200) {
-                    try { resolve(JSON.parse(xhr.responseText)); } catch(err) { reject(err); }
+                    try { 
+                        let text = xhr.responseText;
+                        let match = text.match(/\{[\s\S]*\}/);
+                        resolve(JSON.parse(match ? match[0] : text)); 
+                    } catch(err) { reject(err); }
                 } else reject(new Error('HTTP ' + xhr.status));
             };
             xhr.onerror = () => reject(new Error('Network Error'));
             xhr.send(fd);
         });
         endProg();
+        let h = await get(S.type, S.id);
+        let m = h.find(x => x.timestamp == ts && x.extra_data == fileToSend.name);
         if(d.status!='success') {
-            alertModal('Error', d.message||'Upload failed');
-            let h = await get(S.type, S.id);
-            let idx = h.findIndex(x => x.timestamp == ts && x.extra_data == fileToSend.name);
-            if(idx!=-1) { 
-                h.splice(idx, 1); await save(S.type, S.id, h); 
-                let el = document.getElementById('msg-' + ts);
-                if (el) el.remove();
+            if(m && m.pending) {
+                alertModal('Error', d.message||'Upload failed');
+                let idx = h.indexOf(m);
+                if(idx!=-1) { 
+                    h.splice(idx, 1); await save(S.type, S.id, h); 
+                    let el = document.getElementById('msg-' + ts);
+                    if (el) el.remove();
+                }
             }
         } else {
-            let h = await get(S.type, S.id);
-            let m = h.find(x => x.timestamp == ts && x.extra_data == fileToSend.name);
-            if(m) { 
+            if(m && m.pending) { 
                 delete m.pending; delete m.progress; await save(S.type, S.id, h); 
                 let el = document.getElementById('msg-' + ts);
                 if (el) el.replaceWith(createMsgNode(m, el.querySelector('.msg-sender') !== null, h));
-                if (el) updateMsgNodeInPlace(el, m);
             }
         }
     } catch(e) {
         endProg();
         console.error(e);
-        alertModal('Error', 'Upload failed');
         let h = await get(S.type, S.id);
-        let idx = h.findIndex(x => x.timestamp == ts && x.extra_data == fileToSend.name);
-        if(idx!=-1) { 
-            h.splice(idx, 1); await save(S.type, S.id, h); 
-            let el = document.getElementById('msg-' + ts);
-            if (el) el.remove();
+        let m = h.find(x => x.timestamp == ts && x.extra_data == fileToSend.name);
+        if(m && m.pending) {
+            alertModal('Error', 'Upload failed or timed out.');
+            let idx = h.indexOf(m);
+            if(idx!=-1) { 
+                h.splice(idx, 1); await save(S.type, S.id, h); 
+                let el = document.getElementById('msg-' + ts);
+                if (el) el.remove();
+            }
         }
     }
 }
@@ -3556,7 +3577,8 @@ function scrollToBottom(force){
     if(force) { c.scrollTop=c.scrollHeight; return; }
     if(c.scrollHeight - c.scrollTop - c.clientHeight < 150) c.scrollTo({ top: c.scrollHeight, behavior: 'smooth' });
 }
-function esc(t){ return t?t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"):"" }
+function esc(t){ return t?String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"):"" }
+function jsEsc(t){ return t?String(t).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"'):"" }
 
 document.getElementById('txt').onkeydown=e=>{if(e.key=='Enter' && !e.shiftKey){e.preventDefault();send()}};
 document.getElementById('txt').onkeydown=e=>{if(e.key=='Enter' && !e.shiftKey){e.preventDefault();handleMainBtn()}};
