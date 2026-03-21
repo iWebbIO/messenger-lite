@@ -3656,7 +3656,8 @@ async function sendFile(fileToSend) {
                     if(m && m.pending) { let idx = h.indexOf(m); if(idx!=-1) { h.splice(idx, 1); await save(S.type, S.id, h); let el = document.getElementById('msg-' + ts); if(el) el.remove(); } }
                 }
             } else {
-            resolve();
+                resolve();
+            }
         };
         r.readAsDataURL(fileToSend);
     });
