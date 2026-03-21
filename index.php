@@ -1882,6 +1882,88 @@ async function loadSessions() {
     }
 }
 
+// --- BACK BUTTON HANDLER ---
+function initBackButtonHandler() {
+    S.hasPushedState = false;
+    S.ignoreNextPop = false;
+
+    const isPWA = () => {
+        return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    };
+
+    const observer = new MutationObserver(() => {
+        if (!isPWA() || window.innerWidth > 850) return;
+
+        let isOpen = false;
+        if (document.getElementById('call-overlay') && document.getElementById('call-overlay').style.display === 'flex') isOpen = true;
+        else if (document.getElementById('media-preview') && document.getElementById('media-preview').style.display === 'flex') isOpen = true;
+        else if (document.getElementById('lightbox') && document.getElementById('lightbox').style.display === 'flex') isOpen = true;
+        else if (document.getElementById('app-modal') && document.getElementById('app-modal').style.display === 'flex') isOpen = true;
+        else if (document.getElementById('ctx-menu') && document.getElementById('ctx-menu').style.display === 'block') isOpen = true;
+        else if (document.getElementById('user-popup') && document.getElementById('user-popup').style.display === 'flex') isOpen = true;
+        else if (document.getElementById('notif-list') && document.getElementById('notif-list').style.display === 'block') isOpen = true;
+        else if (document.getElementById('chat-menu') && document.getElementById('chat-menu').style.display === 'block') isOpen = true;
+        else if (document.getElementById('emoji-drawer') && document.getElementById('emoji-drawer').style.display === 'flex') isOpen = true;
+        else if (document.getElementById('att-menu') && document.getElementById('att-menu').style.display === 'grid') isOpen = true;
+        else if (document.getElementById('main-view') && document.getElementById('main-view').classList.contains('active')) isOpen = true;
+
+        if (isOpen && !S.hasPushedState) {
+            history.pushState({ app_state: true }, '');
+            S.hasPushedState = true;
+        } else if (!isOpen && S.hasPushedState) {
+            S.ignoreNextPop = true;
+            history.back();
+            S.hasPushedState = false;
+        }
+    });
+
+    const configStyle = { attributes: true, attributeFilter: ['style'] };
+    const configClass = { attributes: true, attributeFilter: ['class'] };
+
+    ['call-overlay', 'media-preview', 'lightbox', 'app-modal', 'ctx-menu', 'user-popup', 'notif-list', 'chat-menu', 'emoji-drawer', 'att-menu'].forEach(id => {
+        let el = document.getElementById(id);
+        if (el) observer.observe(el, configStyle);
+    });
+    
+    let mv = document.getElementById('main-view');
+    if (mv) observer.observe(mv, configClass);
+
+    window.addEventListener('popstate', (e) => {
+        if (S.ignoreNextPop) {
+            S.ignoreNextPop = false;
+            return;
+        }
+        
+        if (!isPWA() || window.innerWidth > 850) return;
+
+        S.hasPushedState = false;
+
+        let co = document.getElementById('call-overlay');
+        let mp = document.getElementById('media-preview');
+        let lb = document.getElementById('lightbox');
+        let mo = document.getElementById('app-modal');
+        let ctx = document.getElementById('ctx-menu');
+        let up = document.getElementById('user-popup');
+        let nl = document.getElementById('notif-list');
+        let cm = document.getElementById('chat-menu');
+        let em = document.getElementById('emoji-drawer');
+        let am = document.getElementById('att-menu');
+        let mv = document.getElementById('main-view');
+
+        if (co && co.style.display === 'flex') { if (typeof callState !== 'undefined' && callState === 'incoming') rejectCall(); else endCall(); }
+        else if (mp && mp.style.display === 'flex') closePreview();
+        else if (lb && lb.style.display === 'flex') closeLightbox();
+        else if (ctx && ctx.style.display === 'block') ctx.style.display = 'none';
+        else if (up && up.style.display === 'flex') up.style.display = 'none';
+        else if (nl && nl.style.display === 'block') nl.style.display = 'none';
+        else if (cm && cm.style.display === 'block') cm.style.display = 'none';
+        else if (mo && mo.style.display === 'flex') { let cancelBtn = document.getElementById('modal-cancel'); if (cancelBtn && cancelBtn.style.display !== 'none') cancelBtn.click(); else mo.style.display = 'none'; }
+        else if (em && em.style.display === 'flex') em.style.display = 'none';
+        else if (am && am.style.display === 'grid') am.style.display = 'none';
+        else if (mv && mv.classList.contains('active')) closeChat();
+    });
+}
+
 async function init(){
     try {
         await loadKeys();
@@ -1920,6 +2002,7 @@ async function init(){
 
         setLang(curLang);
         renderLists();
+        initBackButtonHandler();
         pollLoop();
         window.addEventListener('online', () => {
             setConn(false, false);
