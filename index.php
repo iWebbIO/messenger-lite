@@ -1078,7 +1078,6 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
     input[type=text] { width:100%; padding:12px; border-radius:20px; border:none; background:var(--input-bg); color:var(--text); outline:none; box-sizing:border-box; }
     #txt { width:100%; padding:10px 12px; border-radius:20px; border:none; background:var(--input-bg); color:var(--text); outline:none; box-sizing:border-box; resize:none; height:40px; font-family:inherit; overflow-y:hidden; line-height:1.4; display:block; }
     
-    #btn-e2ee svg { fill: var(--accent); }
     .btn-icon { background:none; border:none; color:#888; cursor:pointer; display:flex; align-items:center; justify-content:center; border-radius:50%; transition:0.2s; width:40px; height:40px; padding:0; position:relative; flex-shrink:0; user-select:none; }
     @media (hover: hover) { .btn-icon:hover { color:#fff; background:rgba(255,255,255,0.1); } }
     .btn-icon:active { transform: scale(0.9); background:rgba(255,255,255,0.15); }
@@ -1561,10 +1560,6 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
             </div>
             
             <div class="header-actions">
-                <div class="btn-icon" id="btn-e2ee" onclick="toggleEncryption()" style="display:none" title="End-to-End Encryption">
-                    <svg id="icon-e2ee-off" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM8.9 6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2H8.9V6zM18 20H6V10h12v10z"/></svg>
-                    <svg id="icon-e2ee-on" viewBox="0 0 24 24" width="24" fill="var(--accent)" style="display:none"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg>
-                </div>
                 <div class="btn-icon" id="btn-call" onclick="startCall()" style="display:none">
                     <svg viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
                 </div>
@@ -1576,6 +1571,7 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('?action=sw');
                 <div class="btn-icon menu-btn" onclick="toggleMenu(event)">
                     <svg viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
                     <div class="menu-dropdown" id="chat-menu">
+                        <div class="menu-item" id="menu-e2ee" onclick="toggleEncryption()" style="display:none">Enable End-to-End Encryption</div>
                         <div class="menu-item" onclick="clearChat()" data-i18n="clear_history">Clear History</div>
                         <div class="menu-item red-text" onclick="deleteChat()" data-i18n="delete_chat">Delete Chat</div>
                         <div class="menu-item" onclick="exportChat()" data-i18n="export_chat">Export Chat</div>
@@ -2408,17 +2404,26 @@ async function resetE2EE(u) {
 }
 
 function updateE2EEUI() {
-    let btn = document.getElementById('btn-e2ee');
-    if(!btn) return;
+    let menuE2ee = document.getElementById('menu-e2ee');
+    if(!menuE2ee) return;
     
-    let canEncrypt = (S.type === 'dm' || (S.type === 'group' && S.groups[S.id] && S.groups[S.id].category !== 'channel'));
-    btn.style.display = canEncrypt ? 'flex' : 'none';
+    let isEnc = !!S.e2ee[S.id];
+    let canEncrypt = false;
     
-    if(canEncrypt) {
-        let isEnc = !!S.e2ee[S.id];
-        document.getElementById('icon-e2ee-on').style.display = isEnc ? 'block' : 'none';
-        document.getElementById('icon-e2ee-off').style.display = isEnc ? 'none' : 'block';
-        
+    if (S.type === 'dm') {
+        canEncrypt = true;
+        menuE2ee.innerText = isEnc ? "Reset E2EE Session" : "Enable End-to-End Encryption";
+        menuE2ee.style.color = isEnc ? "#ff9800" : "";
+    } else if (S.type === 'group' && S.groups[S.id] && S.groups[S.id].category !== 'channel') {
+        let isOwner = S.groups[S.id].owner_id == <?php echo $_SESSION['uid']; ?>;
+        canEncrypt = isOwner && !isEnc;
+        menuE2ee.innerText = "Enable WEncrypt";
+        menuE2ee.style.color = "";
+    }
+    
+    menuE2ee.style.display = canEncrypt ? 'block' : 'none';
+    
+    if (S.type === 'dm' || (S.type === 'group' && S.groups[S.id] && S.groups[S.id].category !== 'channel')) {
         let title = document.getElementById('chat-title');
         let lockSvg = '<svg viewBox="0 0 24 24" width="16" style="vertical-align:text-bottom;fill:var(--accent);margin-left:5px"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg>';
         if(isEnc && !title.innerHTML.includes('<svg')) title.innerHTML += lockSvg;
@@ -2434,6 +2439,7 @@ function updateE2EEUI() {
 }
 
 function toggleEncryption(){
+    document.getElementById('chat-menu').style.display='none';
     if(S.type=='dm') {
         if(S.e2ee[S.id]) resetE2EE(S.id);
         else startE2EE();
