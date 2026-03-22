@@ -415,7 +415,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // MESSAGING
     if ($action === 'send') {
-        $ts = $input['timestamp'] ?? time();
+        $ts = $input['timestamp'] ?? round(microtime(true) * 1000);
         $reply = $input['reply_to'] ?? null;
         $extra = $input['extra'] ?? null;
         $type = $input['type'] ?? 'text';
@@ -463,7 +463,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         else if (strpos($mime, 'video') === 0) $type = 'video';
         else if (strpos($mime, 'audio') === 0) $type = 'audio';
         $extra = $_FILES['file']['name'];
-        $ts = $_POST['timestamp'] ?? time();
+        $ts = $_POST['timestamp'] ?? round(microtime(true) * 1000);
         $reply = $_POST['reply_to'] ?? null;
         
         if (!empty($_POST['to_user'])) {
@@ -578,9 +578,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         session_write_close();
         // Cleanup old messages (1% chance)
         if (rand(1, 100) === 1) {
-            $now = time();
-            $t24h = $now - 86400;
-            $t7d = $now - 604800;
+            $now_ms = round(microtime(true) * 1000);
+            $t24h = $now_ms - 86400000;
+            $t7d = $now_ms - 604800000;
 
             // 1. DMs (group_id IS NULL) -> 24h
             $db->exec("DELETE FROM messages WHERE group_id IS NULL AND timestamp < $t24h");
@@ -589,7 +589,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // 3. Channels (category='channel') NOT discoverable -> 7 days
             $db->exec("DELETE FROM messages WHERE group_id IN (SELECT id FROM groups WHERE category = 'channel' AND type != 'discoverable') AND timestamp < $t7d");
             // 4. Public Chat (group_id = -1) -> 5 mins (Keep existing ephemeral nature)
-            $db->exec("DELETE FROM messages WHERE group_id = -1 AND timestamp < " . ($now - 300));
+            $db->exec("DELETE FROM messages WHERE group_id = -1 AND timestamp < " . ($now_ms - 300000));
         }
 
         // Self Profile
@@ -638,7 +638,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Public Chat
         $lastPub = $input['last_pub'] ?? 0;
-        $db->exec("DELETE FROM messages WHERE group_id = -1 AND timestamp < " . (time() - 300));
+        $db->exec("DELETE FROM messages WHERE group_id = -1 AND timestamp < " . (round(microtime(true) * 1000) - 300000));
         $stmt = $db->prepare("SELECT * FROM messages WHERE group_id = -1 AND id > ? ORDER BY id ASC");
         $stmt->execute([$lastPub]);
         $pubMsgs = $stmt->fetchAll();
@@ -3127,7 +3127,7 @@ function createMsgNode(m, showSender, history){
     }
 
 
-    div.innerHTML=`${sender}${rep}${txt}<div class="msg-meta">${new Date(m.timestamp*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} ${stat}</div>${reactDisplay}`;
+    div.innerHTML=`${sender}${rep}${txt}<div class="msg-meta">${new Date(m.timestamp > 9999999999 ? m.timestamp : m.timestamp*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} ${stat}</div>${reactDisplay}`;
     
     div.oncontextmenu=(e)=>{
         e.preventDefault();
@@ -3205,7 +3205,7 @@ async function renderChat(){
     c.innerHTML='';
     let last=null, lastDate=null;
     h.forEach(m=>{
-        let d = new Date(m.timestamp*1000);
+        let d = new Date(m.timestamp > 9999999999 ? m.timestamp : m.timestamp*1000);
         let dateStr = d.toLocaleDateString();
         if(dateStr !== lastDate) {
             let sep = document.createElement('div');
@@ -3250,7 +3250,7 @@ async function send(){
     let replyId = S.reply;
     cancelReply();
     
-    let ts = Math.floor(Date.now()/1000);
+    let ts = Date.now();
     let msgObj = {
         from_user: ME,
         message: txt,
@@ -3367,7 +3367,7 @@ async function ctxAction(act, arg) {
                 if (el) el.replaceWith(createMsgNode(t, el.querySelector('.msg-sender') !== null, h));
             } 
         }
-      else if(act=='details') alertModal("Details", `From: ${m.from_user}\nSent: ${new Date(m.timestamp*1000).toLocaleString()}`);
+      else if(act=='details') alertModal("Details", `From: ${m.from_user}\nSent: ${new Date(m.timestamp > 9999999999 ? m.timestamp : m.timestamp*1000).toLocaleString()}`);
         else if(act=='delete') { if(m.from_user!=ME)return; S.reply=m.timestamp; await deleteMsg(); }
     } else if(c.type == 'chat_list') {
         let d = c.data;
@@ -3534,7 +3534,7 @@ function sendLocation() {
     navigator.geolocation.getCurrentPosition(pos => {
         endProg();
         let coords = `${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`;
-        let ts = Math.floor(Date.now()/1000);
+        let ts = Date.now();
         let ld = {message: coords, type: 'location', timestamp: ts};
         if(S.type=='dm') ld.to_user=S.id; else if(S.type=='group'||S.type=='channel') ld.group_id=S.id; else ld.group_id=-1;
         
@@ -3580,7 +3580,7 @@ async function processFile(f) {
             let blob = await new Promise(r=>cvs.toBlob(r,'image/jpeg',0.8));
             
             let name = f.name;
-            if(!name || name === 'image.png') name = "image_" + Math.floor(Date.now()/1000) + ".jpg";
+            if(!name || name === 'image.png') name = "image_" + Date.now() + ".jpg";
             else if(name.toLowerCase().endsWith('.png')) name = name.replace(/\.png$/i, '.jpg');
             
             pendingFile = new File([blob], name, {type:'image/jpeg'});
@@ -3656,7 +3656,7 @@ function closePreview() {
 
 async function sendFile(fileToSend) {
     startProg();
-    let ts = Math.floor(Date.now()/1000);
+    let ts = Date.now();
     let replyId = S.reply;
     cancelReply();
     
@@ -4031,7 +4031,7 @@ function stopRec(send){
             if(b.size > 10485760) { alertModal('Error','Audio too large'); return; }
             let r=new FileReader();
             r.onload=async ()=>{ 
-                let ts=Math.floor(Date.now()/1000);
+                let ts=Date.now();
                 let msgObj = {from_user:ME,message:r.result,type:'audio',timestamp:ts, pending: true};
                 await store(S.type,S.id,msgObj); 
                 scrollToBottom(true);
@@ -4671,7 +4671,7 @@ function createGif() {
 }
 
 async function sendSticker(content, type='text') {
-    let ts = Math.floor(Date.now()/1000);
+    let ts = Date.now();
     let msgObj = { from_user: ME, message: content, type: type, timestamp: ts, pending: true };
     await store(S.type, S.id, msgObj);
     scrollToBottom(true);
