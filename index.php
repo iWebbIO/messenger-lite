@@ -415,7 +415,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // MESSAGING
     if ($action === 'send') {
-        $ts = $input['timestamp'] ?? (time() * 1000);
+        $ts = $input['timestamp'] ?? time();
         $reply = $input['reply_to'] ?? null;
         $extra = $input['extra'] ?? null;
         $type = $input['type'] ?? 'text';
@@ -463,7 +463,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         else if (strpos($mime, 'video') === 0) $type = 'video';
         else if (strpos($mime, 'audio') === 0) $type = 'audio';
         $extra = $_FILES['file']['name'];
-        $ts = $_POST['timestamp'] ?? (time() * 1000);
+        $ts = $_POST['timestamp'] ?? time();
         $reply = $_POST['reply_to'] ?? null;
         
         if (!empty($_POST['to_user'])) {
@@ -579,25 +579,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Cleanup old messages (1% chance)
         if (rand(1, 100) === 1) {
             $now = time();
-            $nowMs = $now * 1000;
-            
             $t24h = $now - 86400;
-            $t24hMs = $nowMs - 86400000;
-            
             $t7d = $now - 604800;
-            $t7dMs = $nowMs - 604800000;
-            
-            $t5m = $now - 300;
-            $t5mMs = $nowMs - 300000;
 
-            // 1. DMs -> 24h
-            $db->exec("DELETE FROM messages WHERE group_id IS NULL AND ((timestamp < $t24h) OR (timestamp > 9999999999 AND timestamp < $t24hMs))");
-            // 2. Groups -> 24h
-            $db->exec("DELETE FROM messages WHERE group_id IN (SELECT id FROM groups WHERE category = 'group') AND ((timestamp < $t24h) OR (timestamp > 9999999999 AND timestamp < $t24hMs))");
-            // 3. Channels -> 7 days
-            $db->exec("DELETE FROM messages WHERE group_id IN (SELECT id FROM groups WHERE category = 'channel' AND type != 'discoverable') AND ((timestamp < $t7d) OR (timestamp > 9999999999 AND timestamp < $t7dMs))");
-            // 4. Public Chat -> 5 mins
-            $db->exec("DELETE FROM messages WHERE group_id = -1 AND ((timestamp < $t5m) OR (timestamp > 9999999999 AND timestamp < $t5mMs))");
+            // 1. DMs (group_id IS NULL) -> 24h
+            $db->exec("DELETE FROM messages WHERE group_id IS NULL AND timestamp < $t24h");
+            // 2. Groups (category='group') -> 24h
+            $db->exec("DELETE FROM messages WHERE group_id IN (SELECT id FROM groups WHERE category = 'group') AND timestamp < $t24h");
+            // 3. Channels (category='channel') NOT discoverable -> 7 days
+            $db->exec("DELETE FROM messages WHERE group_id IN (SELECT id FROM groups WHERE category = 'channel' AND type != 'discoverable') AND timestamp < $t7d");
+            // 4. Public Chat (group_id = -1) -> 5 mins (Keep existing ephemeral nature)
+            $db->exec("DELETE FROM messages WHERE group_id = -1 AND timestamp < " . ($now - 300));
         }
 
         // Self Profile
@@ -646,9 +638,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Public Chat
         $lastPub = $input['last_pub'] ?? 0;
-        $t5m = time() - 300;
-        $t5mMs = (time() * 1000) - 300000;
-        $db->exec("DELETE FROM messages WHERE group_id = -1 AND ((timestamp < $t5m) OR (timestamp > 9999999999 AND timestamp < $t5mMs))");
+        $db->exec("DELETE FROM messages WHERE group_id = -1 AND timestamp < " . (time() - 300));
         $stmt = $db->prepare("SELECT * FROM messages WHERE group_id = -1 AND id > ? ORDER BY id ASC");
         $stmt->execute([$lastPub]);
         $pubMsgs = $stmt->fetchAll();
@@ -3215,7 +3205,7 @@ async function renderChat(){
     c.innerHTML='';
     let last=null, lastDate=null;
     h.forEach(m=>{
-        let d = tsToDate(m.timestamp);
+        let d = new Date(m.timestamp*1000);
         let dateStr = d.toLocaleDateString();
         if(dateStr !== lastDate) {
             let sep = document.createElement('div');
@@ -3260,7 +3250,7 @@ async function send(){
     let replyId = S.reply;
     cancelReply();
     
-    let ts = Date.now();
+    let ts = Math.floor(Date.now()/1000);
     let msgObj = {
         from_user: ME,
         message: txt,
@@ -3377,7 +3367,7 @@ async function ctxAction(act, arg) {
                 if (el) el.replaceWith(createMsgNode(t, el.querySelector('.msg-sender') !== null, h));
             } 
         }
-      else if(act=='details') alertModal("Details", `From: ${m.from_user}\nSent: ${tsToDate(m.timestamp).toLocaleString()}`);
+      else if(act=='details') alertModal("Details", `From: ${m.from_user}\nSent: ${new Date(m.timestamp*1000).toLocaleString()}`);
         else if(act=='delete') { if(m.from_user!=ME)return; S.reply=m.timestamp; await deleteMsg(); }
     } else if(c.type == 'chat_list') {
         let d = c.data;
@@ -3544,7 +3534,7 @@ function sendLocation() {
     navigator.geolocation.getCurrentPosition(pos => {
         endProg();
         let coords = `${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`;
-        let ts = Date.now();
+        let ts = Math.floor(Date.now()/1000);
         let ld = {message: coords, type: 'location', timestamp: ts};
         if(S.type=='dm') ld.to_user=S.id; else if(S.type=='group'||S.type=='channel') ld.group_id=S.id; else ld.group_id=-1;
         
@@ -3666,7 +3656,7 @@ function closePreview() {
 
 async function sendFile(fileToSend) {
     startProg();
-    let ts = Date.now();
+    let ts = Math.floor(Date.now()/1000);
     let replyId = S.reply;
     cancelReply();
     
@@ -4008,7 +3998,6 @@ function scrollToBottom(force){
 }
 function esc(t){ return t?String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"):"" }
 function jsEsc(t){ return t?String(t).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r'):"" }
-function tsToDate(ts) { return new Date(ts > 9999999999 ? ts : ts * 1000); }
 
 document.getElementById('txt').onkeydown=e=>{if(e.key=='Enter' && !e.shiftKey){e.preventDefault();send()}};
 document.getElementById('txt').onkeydown=e=>{if(e.key=='Enter' && !e.shiftKey){e.preventDefault();handleMainBtn()}};
@@ -4042,7 +4031,7 @@ function stopRec(send){
             if(b.size > 10485760) { alertModal('Error','Audio too large'); return; }
             let r=new FileReader();
             r.onload=async ()=>{ 
-                let ts = Date.now();
+                let ts=Math.floor(Date.now()/1000);
                 let msgObj = {from_user:ME,message:r.result,type:'audio',timestamp:ts, pending: true};
                 await store(S.type,S.id,msgObj); 
                 scrollToBottom(true);
@@ -4682,7 +4671,7 @@ function createGif() {
 }
 
 async function sendSticker(content, type='text') {
-    let ts = Date.now();
+    let ts = Math.floor(Date.now()/1000);
     let msgObj = { from_user: ME, message: content, type: type, timestamp: ts, pending: true };
     await store(S.type, S.id, msgObj);
     scrollToBottom(true);
