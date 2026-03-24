@@ -10,6 +10,9 @@ if ($lightweightMode) {
 ini_set('session.cookie_httponly', 1);
 ini_set('session.cookie_samesite', 'Strict');
 ini_set('session.use_strict_mode', 1);
+if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
+    ini_set('session.cookie_secure', 1);
+}
 session_start();
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -277,7 +280,7 @@ if (isset($_SESSION['admin']) && !empty($adminUser)) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Content-Type: application/json');
 
-    if (!isset($_SERVER['HTTP_X_CSRF_TOKEN']) || $_SERVER['HTTP_X_CSRF_TOKEN'] !== $_SESSION['csrf_token']) {
+    if (!isset($_SERVER['HTTP_X_CSRF_TOKEN']) || !hash_equals($_SESSION['csrf_token'], $_SERVER['HTTP_X_CSRF_TOKEN'])) {
         http_response_code(403);
         echo json_encode(['status' => 'error', 'message' => 'CSRF validation failed']);
         exit;
@@ -396,7 +399,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // PROFILE
     if ($action === 'update_profile') {
         if (!empty($input['avatar'])) {
-            $db->prepare("UPDATE users SET avatar = ? WHERE id = ?")->execute([$input['avatar'], $myId]);
+            if (preg_match('/^(https?:\/\/|data:image\/)/i', $input['avatar'])) {
+                $db->prepare("UPDATE users SET avatar = ? WHERE id = ?")->execute([$input['avatar'], $myId]);
+            }
         }
         if (!empty($input['new_password'])) {
             $db->prepare("UPDATE users SET password = ? WHERE id = ?")->execute([password_hash($input['new_password'], PASSWORD_DEFAULT), $myId]);
@@ -528,6 +533,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
     if ($action === 'join_group') {
+        usleep(200000); // Mitigation against brute-forcing
         $row = $db->prepare("SELECT * FROM groups WHERE join_code = ?");
         $row->execute([$input['code']]);
         $grp = $row->fetch();
@@ -1745,6 +1751,7 @@ function b642ab(base64) {
 }
 
 async function setSafeVideoSrc(videoEl, dataUri) {
+    if(dataUri.trim().toLowerCase().startsWith('javascript:')) return;
     try {
         let blob = await (await fetch(dataUri)).blob();
         videoEl.src = URL.createObjectURL(blob);
@@ -3108,8 +3115,8 @@ function createMsgNode(m, showSender, history){
         let isVoice = !m.extra_data;
         let extra = '';
         if(!isVoice) {
-             let safeNameJs = jsEsc(m.extra_data || 'audio');
-             let safeMsgJs = jsEsc(m.message);
+             let safeNameJs = esc(jsEsc(m.extra_data || 'audio'));
+             let safeMsgJs = esc(jsEsc(m.message));
              extra = `<div style="display:flex;gap:2px;margin-left:5px"><button class="btn-icon" style="width:28px;height:28px;padding:0;color:inherit;background:none" onclick="downloadFile('${safeMsgJs}', '${safeNameJs}')" title="Download"><svg viewBox="0 0 24 24" width="18" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></button><button class="btn-icon" style="width:28px;height:28px;padding:0;color:inherit;background:none" onclick="shareFile('${safeMsgJs}', '${safeNameJs}')" title="Share"><svg viewBox="0 0 24 24" width="18" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/></svg></button></div>`;
         }
         txt=`<div class="audio-player" ${!isVoice?'style="padding:8px;background:rgba(0,0,0,0.2);border-radius:8px"':''}>
@@ -3126,8 +3133,8 @@ function createMsgNode(m, showSender, history){
     else if(m.type=='gif') txt=`<video class="gif-video" autoplay loop muted playsinline style="max-width:100%;border-radius:8px;cursor:pointer"></video>`;
     else if(m.type=='file') {
         let fname = esc(m.extra_data || 'file');
-        let safeNameJs = jsEsc(m.extra_data || 'file');
-        let safeMsgJs = jsEsc(m.message);
+        let safeNameJs = esc(jsEsc(m.extra_data || 'file'));
+        let safeMsgJs = esc(jsEsc(m.message));
         txt = `<div class="file-att" onclick="downloadFile('${safeMsgJs}', '${safeNameJs}')">
             <svg viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
             <span>${fname}</span></div>`;
@@ -3441,9 +3448,9 @@ async function viewReactionUser(e, user) {
     if(!p || !p.username) return;
     
     let html = `<div style="display:flex;align-items:center;gap:15px">
-        <div class="avatar" style="width:50px;height:50px;font-size:1.5rem;background-image:url('${p.avatar||''}')">${p.avatar?'':p.username[0]}</div>
+        <div class="avatar" style="width:50px;height:50px;font-size:1.5rem;background-image:url('${esc(p.avatar||'')}')">${p.avatar?'':esc(p.username[0])}</div>
         <div>
-            <div style="font-weight:bold;font-size:1.1rem">${p.username}</div>
+            <div style="font-weight:bold;font-size:1.1rem">${esc(p.username)}</div>
             <div style="color:#888;font-size:0.9rem">${p.bio||'No bio'}</div>
         </div>
     </div>
@@ -4020,6 +4027,7 @@ async function handleAvUpload(inp) {
 }
 
 function downloadFile(data, name){
+    if(data.trim().toLowerCase().startsWith('javascript:')) { showToast('Invalid file data'); return; }
     let a = document.createElement('a'); a.href = data; a.download = name; a.click();
 }
 
@@ -4107,8 +4115,8 @@ async function showProfilePopup() {
         if(p.status === 'error') return;
         
         let html = `<div style="text-align:center;margin-bottom:15px">
-            <div class="avatar" style="width:80px;height:80px;margin:0 auto 10px auto;font-size:2rem;background-image:url('${p.avatar||''}')">${p.avatar?'':p.username[0]}</div>
-            <b>${p.username}</b><br>
+            <div class="avatar" style="width:80px;height:80px;margin:0 auto 10px auto;font-size:2rem;background-image:url('${esc(p.avatar||'')}')">${p.avatar?'':esc(p.username[0])}</div>
+            <b>${esc(p.username)}</b><br>
             <span style="color:#888;font-size:0.8rem">${p.bio||'-'}</span><br>
             <div style="font-size:0.8rem;color:#666;margin-top:5px">
                 Joined: ${new Date(p.joined_at*1000).toLocaleDateString()}<br>
@@ -4125,16 +4133,16 @@ async function showProfilePopup() {
         if(d.status === 'error') return;
         
         let html = `<div style="text-align:center;margin-bottom:15px">
-            <b>${d.group.name}</b><br>
-            <span style="color:#888;font-size:0.8rem">${d.group.category=='channel'?'Channel':'Group'} - ${d.group.type} ${d.group.join_code ? '| Code: '+d.group.join_code : ''}</span><br>
+            <b>${esc(d.group.name)}</b><br>
+            <span style="color:#888;font-size:0.8rem">${d.group.category=='channel'?'Channel':'Group'} - ${esc(d.group.type)} ${d.group.join_code ? '| Code: '+esc(d.group.join_code) : ''}</span><br>
             ${d.is_owner && d.group.type=='private' ? `<button class="btn-sec" style="font-size:0.7rem;margin-top:5px" onclick="groupSettings(${S.id})">Manage Invite</button>` : ''}
             ${!S.e2ee[S.id] && d.group.category!='channel' ? `<button class="btn-sec" style="margin-top:10px;width:100%" onclick="startWEncrypt();document.getElementById('app-modal').style.display='none'">Enable WEncrypt</button>` : ``}
         </div>
         <div style="max-height:200px;overflow-y:auto;text-align:left;margin-bottom:15px;background:#222;padding:10px;border-radius:8px">
             <div style="font-size:0.8rem;color:#aaa;margin-bottom:5px">Members (${d.members.length})</div>
-            ${d.members.map(m=>`<div style="padding:5px;border-bottom:1px solid #333;display:flex;align-items:center">
-                <div class="avatar" style="width:24px;height:24px;font-size:0.8rem;margin-right:8px;background-image:url('${m.avatar||''}')">${m.avatar?'':m.username[0]}</div>
-                <span>${m.username}</span> ${m.public_key?'<span title="Key Available" style="color:#0f0;font-size:0.6rem;margin-left:5px">🔑</span>':''}
+            ${d.members.map(m=>`<div style="padding:5px;border-bottom:1px solid var(--border);display:flex;align-items:center">
+                <div class="avatar" style="width:24px;height:24px;font-size:0.8rem;margin-right:8px;background-image:url('${esc(m.avatar||'')}')">${m.avatar?'':esc(m.username[0])}</div>
+                <span>${esc(m.username)}</span> ${m.public_key?'<span title="Key Available" style="color:#0f0;font-size:0.6rem;margin-left:5px">🔑</span>':''}
             </div>`).join('')}
         </div>
         <div style="display:flex;gap:10px;justify-content:center">
@@ -5057,6 +5065,7 @@ function updateLbTransform() { lbImg.style.transform = `translate(${lbX}px, ${lb
 
 async function shareImage() {
     if(!lbImg.src) return;
+    if(lbImg.src.trim().toLowerCase().startsWith('javascript:')) return;
     if(navigator.share) {
         try {
             let blob = await (await fetch(lbImg.src)).blob();
@@ -5067,6 +5076,7 @@ async function shareImage() {
     } else showToast("Sharing not supported");
 }
 function downloadImage() {
+    if(lbImg.src.trim().toLowerCase().startsWith('javascript:')) return;
     let a = document.createElement('a');
     a.href = lbImg.src;
     a.download = 'image_' + Date.now();
@@ -5074,6 +5084,7 @@ function downloadImage() {
 }
 
 async function shareFile(data, name) {
+    if(data.trim().toLowerCase().startsWith('javascript:')) return;
     if(navigator.share) {
         try {
             let blob = await (await fetch(data)).blob();
