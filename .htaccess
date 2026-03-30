@@ -1,0 +1,2 @@
+<FilesMatch "^(chat_mw.db|chat_mw.db-shm|chat_mw.db-wal)$">
+Require all denied
