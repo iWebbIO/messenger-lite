@@ -34,7 +34,7 @@ if (!file_exists($htaccessFile)) {
     @file_put_contents($htaccessFile, $htaccessRule . "\n");
 } else {
     $currentHtaccess = @file_get_contents($htaccessFile);
-    if ($currentHtaccess !== false && strpos($currentHtaccess, 'chat_mw.db') === false) {
+    if ($currentHtaccess !== false && strpos($currentHtaccess, 'chat_mw\.db') === false) {
         @file_put_contents($htaccessFile, "\n# moreweb Messenger DB Protection\n" . $htaccessRule . "\n", FILE_APPEND);
     }
 }
