@@ -3260,7 +3260,7 @@ function createMsgNode(m, showSender, history){
 
     let editedHtml = m.edited ? '<span style="font-size:0.65rem;font-style:italic;margin-right:4px">edited</span>' : '';
     let menuIcon = `<div class="msg-menu-icon" onclick="openMsgMenu(event, ${m.timestamp})">⋮</div>`;
-    div.innerHTML=`${sender}${rep}${txt}<div class="msg-meta">${editedHtml}${new Date(m.timestamp > 9999999999 ? m.timestamp : m.timestamp*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} ${stat}</div>${reactDisplay}${menuIcon}`;
+    div.innerHTML=`${sender}${rep}${txt}<div class="msg-meta">${editedHtml}${new Date(+m.timestamp > 9999999999 ? +m.timestamp : +m.timestamp*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} ${stat}</div>${reactDisplay}${menuIcon}`;
     
     let touchTimer;
     div.addEventListener('touchstart', (e) => {
@@ -3336,7 +3336,7 @@ async function renderChat(){
     c.innerHTML='';
     let last=null, lastDate=null;
     h.forEach(m=>{
-        let d = new Date(m.timestamp > 9999999999 ? m.timestamp : m.timestamp*1000);
+        let d = new Date(+m.timestamp > 9999999999 ? +m.timestamp : +m.timestamp*1000);
         let dateStr = d.toLocaleDateString();
         if(dateStr !== lastDate) {
             let sep = document.createElement('div');
@@ -3632,7 +3632,7 @@ async function ctxAction(act, arg) {
                 if (el) el.replaceWith(createMsgNode(t, el.querySelector('.msg-sender') !== null, h));
             } 
         }
-      else if(act=='details') alertModal("Details", `From: ${m.from_user}<br>Sent: ${new Date(m.timestamp > 9999999999 ? m.timestamp : m.timestamp*1000).toLocaleString()}`);
+      else if(act=='details') alertModal("Details", `From: ${m.from_user}<br>Sent: ${new Date(+m.timestamp > 9999999999 ? +m.timestamp : +m.timestamp*1000).toLocaleString()}`);
         else if(act=='delete') { if(m.from_user!=ME)return; S.reply=m.timestamp; await deleteMsg(); }
     } else if(c.type == 'chat_list') {
         let d = c.data;
