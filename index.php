@@ -1176,6 +1176,8 @@ Promise.all([
     .light-mode .reply-ctx { background:#eee; color:#333; }
     .light-mode .ctx-menu { background:#fff; border-color:#ccc; }
 
+    .list-item, .msg { content-visibility: auto; contain-intrinsic-size: 0 50px; }
+
     .e2ee-on { color: var(--accent); }
     * { -webkit-tap-highlight-color: transparent; }
     body { margin:0; font-family:'Calibri', sans-serif; background:var(--bg); color:var(--text); height:100vh; height:calc(var(--vh, 1vh) * 100); display:flex; overflow:hidden; overscroll-behavior-y: none; }
@@ -1215,6 +1217,7 @@ Promise.all([
     .list-item { padding:15px; border-bottom:1px solid var(--border); display:flex; align-items:center; cursor:pointer; transition:0.2s; position:relative; user-select:none; }
     @media (hover: hover) { .list-item:hover { background:rgba(255,255,255,0.1); } }
     .list-item:active { background:rgba(255,255,255,0.05); }
+    .list-item { contain: layout; }
     .list-item.active { background:rgba(255,255,255,0.15); border-left:4px solid var(--accent); padding-left:11px; }
     @media (min-width: 851px) {
         .list-item[data-key="global"].active {
@@ -1227,6 +1230,7 @@ Promise.all([
     .avatar { width:40px; height:40px; border-radius:50%; background:#444; margin-right:12px; display:flex; align-items:center; justify-content:center; font-weight:bold; background-size:cover; flex-shrink:0; }
     
     .main-view { flex:1; display:flex; flex-direction:column; background:var(--bg); background-image:radial-gradient(var(--pattern) 1px, transparent 1px); background-size:20px 20px; position:relative; min-height:0; min-width:0; }
+    .main-view { flex:1; display:flex; flex-direction:column; background:var(--bg); background-image:radial-gradient(var(--pattern) 1px, transparent 1px); background-size:20px 20px; position:relative; min-height:0; min-width:0; will-change: transform; }
     .chat-header { height:60px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; padding:0 20px; flex-shrink: 0; z-index: 100; position: relative; }
     .header-actions { display:flex; gap:15px; position:relative; }
     .chat-info-clickable { cursor: pointer; }
@@ -1245,6 +1249,7 @@ Promise.all([
 
     .messages { flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:5px; overscroll-behavior-y: contain; }
     .msg { max-width:65%; padding:8px 12px; border-radius:8px; font-size:0.95rem; line-height:1.4; position:relative; word-wrap:break-word; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
+    .msg { contain: layout; }
     .msg.in { align-self:flex-start; background:var(--msg-in); border-top-left-radius:0; border:1px solid transparent; }
     .msg.out { align-self:flex-end; background:var(--msg-out); border-top-right-radius:0; }
     .msg img { max-width:100%; border-radius:4px; margin-top:5px; cursor:pointer; }
@@ -1679,6 +1684,7 @@ Promise.all([
         </div>
         <div id="tab-chats" class="tab-content">
             <div style="padding:10px 15px 5px 15px"><input type="text" id="chat-search" class="form-input" placeholder="Search chats..." onkeyup="renderLists()" style="margin:0;padding:10px 15px;border-radius:20px" autocomplete="off"></div>
+            <div style="padding:10px 15px 5px 15px"><input type="text" id="chat-search" class="form-input" placeholder="Search chats..." oninput="debouncedRender()" style="margin:0;padding:10px 15px;border-radius:20px" autocomplete="off"></div>
             <div class="panel-header" style="padding-top:5px;padding-bottom:5px;border-bottom:none"><span data-i18n="tab_chats">Chats</span> <div class="btn-icon" onclick="promptChat()">+</div></div>
             <div class="list-area" id="list-chats">
                 <div class="tab-loader">
@@ -1689,6 +1695,7 @@ Promise.all([
         </div>
         <div id="tab-groups" class="tab-content" style="display:none">
             <div style="padding:10px 15px 5px 15px"><input type="text" id="group-search" class="form-input" placeholder="Search groups..." onkeyup="renderLists()" style="margin:0;padding:10px 15px;border-radius:20px" autocomplete="off"></div>
+            <div style="padding:10px 15px 5px 15px"><input type="text" id="group-search" class="form-input" placeholder="Search groups..." oninput="debouncedRender()" style="margin:0;padding:10px 15px;border-radius:20px" autocomplete="off"></div>
             <div class="panel-header" style="padding-top:5px;padding-bottom:5px;border-bottom:none"><span data-i18n="tab_groups">Groups</span> 
                 <div style="display:flex;gap:5px">
                 <div class="btn-icon" onclick="discover('group')" title="Discover Groups">🌍</div>
@@ -1704,6 +1711,7 @@ Promise.all([
         </div>
         <div id="tab-channels" class="tab-content" style="display:none">
             <div style="padding:10px 15px 5px 15px"><input type="text" id="channel-search" class="form-input" placeholder="Search channels..." onkeyup="renderLists()" style="margin:0;padding:10px 15px;border-radius:20px" autocomplete="off"></div>
+            <div style="padding:10px 15px 5px 15px"><input type="text" id="channel-search" class="form-input" placeholder="Search channels..." oninput="debouncedRender()" style="margin:0;padding:10px 15px;border-radius:20px" autocomplete="off"></div>
             <div class="panel-header" style="padding-top:5px;padding-bottom:5px;border-bottom:none"><span data-i18n="tab_channels">Channels</span> <div style="display:flex;gap:5px"><div class="btn-icon" onclick="discover('channel')" title="Discover Channels">🌍</div><div class="btn-icon" onclick="createChannel()" title="Create Channel">+</div></div></div>
             <div style="padding:0 15px 10px 15px"><button class="form-input" style="cursor:pointer;border-radius:20px;text-align:center;background:var(--bg);border:1px solid var(--border)" onclick="joinGroup()">Join via Code</button></div>
             <div class="list-area" id="list-channels">
@@ -1947,6 +1955,7 @@ let pendingImages = [];
 let currentAudio=null, currentBtn=null, updateInterval=null;
 let lastPollTime = null;
 let emojiPinned = false;
+let lastListState = "";
 const RTC_CFG = LIGHTWEIGHT_MODE ? {iceServers:[]} : {iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
 let pc=null, localStream=null, callState='idle', callPeer=null;
 
@@ -2049,6 +2058,12 @@ function applyLang() {
     let joinBtn = document.querySelector('#tab-groups button'); if(joinBtn) joinBtn.innerText = t.join_code;
     let joinBtnC = document.querySelector('#tab-channels button'); if(joinBtnC) joinBtnC.innerText = t.join_code;
     let cancelRec = document.querySelector('#rec-ui span[onclick*="stopRec(false)"]'); if(cancelRec) cancelRec.innerText = t.cancel;
+}
+
+let debounceTimer;
+function debouncedRender() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => { renderLists(); }, 150);
 }
 
 // Mobile Viewport Fix
@@ -2614,6 +2629,10 @@ async function poll(){
             await store('public','global',m);
             notify('global', m.message, 'public');
         }
+        
+        const stateStr = JSON.stringify({o: d.online.length, d: d.dms.length, g: d.groups.length, gm: d.group_msgs.length});
+        if (stateStr !== lastListState) { lastListState = stateStr; renderLists(); }
+        
         if(S.type=='public') document.getElementById('chat-sub').innerText = "Global Room (5m TTL) - " + d.online.length + " Online";
         else if(S.type=='dm' && d.typing && d.typing.includes(S.id)) document.getElementById('typing-ind').style.display='block'; else document.getElementById('typing-ind').style.display='none';
 
